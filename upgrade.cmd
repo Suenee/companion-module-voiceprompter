@@ -3,10 +3,10 @@ setlocal EnableExtensions
 cd /d "%~dp0"
 
 set "REPO_URL=https://github.com/Suenee/companion-module-voiceprompter.git"
-set "BRANCH=main"
+set "BRANCH=devel"
 
 echo ============================================
-echo VoicePrompter Module - GitHub upgrade
+echo VoicePrompter Module - GitHub DEVEL upgrade
 echo ============================================
 echo.
 
@@ -24,7 +24,6 @@ if not exist ".git" (
     git remote set-url origin "%REPO_URL%"
     git fetch origin "%BRANCH%"
     if errorlevel 1 goto :fail
-    rem Replace the old non-Git source tree with the canonical repository state.
     git reset --hard "origin/%BRANCH%"
     if errorlevel 1 goto :fail
     git branch -M "%BRANCH%"
@@ -43,7 +42,7 @@ if not exist ".git" (
         echo Commit/revert them before running upgrade.cmd.
         goto :fail
     )
-    echo [2/4] Downloading current source from GitHub...
+    echo [2/4] Downloading current DEVEL source from GitHub...
     git fetch origin "%BRANCH%"
     if errorlevel 1 goto :fail
     git checkout "%BRANCH%" >NUL 2>&1
@@ -64,7 +63,7 @@ if errorlevel 1 goto :fail
 
 echo.
 echo ============================================
-echo UPGRADE COMPLETED SUCCESSFULLY
+echo DEVEL UPGRADE COMPLETED SUCCESSFULLY
 echo ============================================
 echo Companion developer module should reload automatically.
 exit /b 0
@@ -72,7 +71,7 @@ exit /b 0
 :fail
 echo.
 echo ============================================
-echo UPGRADE FAILED
+echo DEVEL UPGRADE FAILED
 echo ============================================
 pause
 exit /b 1
