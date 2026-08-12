@@ -1,8 +1,19 @@
 # Changelog
 
+## 0.8.0 (devel)
+- Implemented explicit VPP `from` / `recipient` routing.
+- Navigation calls now use `expectsResponse: true`.
+- Added correlated success/error acknowledgement handling.
+- Added VPBridge server ping and mailbox-state parsing.
+- Added idle heartbeat driven by the interval received from VPBridge, with fixed 5000 ms grace.
+- Added three connection states: connected, bridge-only, disconnected.
+- Added Companion variables `vp_connected`, `connection_state`, `heartbeat_interval_ms`, `from`, and `recipient`.
+- Removed legacy positional `arg1..arg8` variables and generic `args` variable; marker arguments are exposed explicitly as `marker_args` JSON.
+- Marker events with `expectsResponse: true` receive a terminal acknowledgement after successful parsing.
+- `devel` updater now follows the `devel` branch.
+
 ## 0.7.0
-- Updated parser to current VPP v1 marker-event format.
-- Added `command` and positional marker `arg1..arg8` variables.
+- Updated parser to the VPP v1 marker-event format.
 - Unified message identity as `id`; removed deprecated `signature`, `message_id`, and `cue`.
 
 ## 0.6.x
