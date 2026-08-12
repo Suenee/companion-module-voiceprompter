@@ -2,7 +2,7 @@ import { InstanceBase, InstanceStatus, runEntrypoint } from '@companion-module/b
 import WebSocket from 'ws'
 import { randomBytes } from 'node:crypto'
 
-const MODULE_VERSION = '0.8.0'
+const MODULE_VERSION = '0.8.1'
 const PROTOCOL_VERSION = 1
 const DEFAULT_HOST = '127.0.0.1'
 const DEFAULT_PORT = 8170
@@ -31,7 +31,7 @@ function isObject(v){return !!v && typeof v==='object' && !Array.isArray(v)}
 
 class VoicePrompterInstance extends InstanceBase {
   config={}; ws=null; reconnectTimer=null; heartbeatTimer=null; heartbeatTimeout=null; pendingPingId=null; destroyed=false
-  heartbeatIntervalMs=DEFAULT_HEARTBEAT_MS; lastPeerActivity=Date.now(); peerConnected=false
+  heartbeatIntervalMs=DEFAULT_HEARTBEAT_MS; lastActivityAt=Date.now(); peerConnected=false
 
   async init(config){this.config=this.normalizeConfig(config,true);this.destroyed=false;this.defineVariables();this.defineActions();this.definePresets();this.resetVariables();this.connect()}
   async destroy(){this.destroyed=true;this.clearReconnect();this.stopHeartbeat();this.disconnect()}
@@ -65,7 +65,7 @@ class VoicePrompterInstance extends InstanceBase {
 
   connect(){this.clearReconnect();this.stopHeartbeat();const{apiKey}=this.getConnectionSettings();if(apiKey&&!/^[a-fA-F0-9]{64}$/.test(apiKey)){this.updateStatus(InstanceStatus.BadConfig,'API Key must be 64 hexadecimal characters');return}this.updateStatus(InstanceStatus.Connecting,`Connecting to ${this.getDisplayUrl()}`);try{this.ws=new WebSocket(this.getUrl())}catch(e){this.updateStatus(InstanceStatus.ConnectionFailure,e.message);this.scheduleReconnect();return}
     this.ws.on('unexpected-response',(_req,res)=>{const sc=res.statusCode??0;res.resume();this.setDisconnected();this.updateStatus(InstanceStatus.ConnectionFailure,sc===401?'VPBridge authentication failed (401)':`VPBridge rejected connection (${sc})`);this.scheduleReconnect()})
-    this.ws.on('open',()=>{this.setVariableValues({connected:1,connection_state:'bridge-only'});this.peerConnected=false;this.lastPeerActivity=Date.now();this.updateConnectionStatus();this.startHeartbeat();this.sendPing()})
+    this.ws.on('open',()=>{this.setVariableValues({connected:1,connection_state:'bridge-only'});this.peerConnected=false;this.lastActivityAt=Date.now();this.updateConnectionStatus();this.startHeartbeat();this.sendPing()})
     this.ws.on('message',d=>this.handleMessage(d));this.ws.on('close',c=>{this.setDisconnected();this.updateStatus(InstanceStatus.Disconnected,`VPBridge disconnected (${c})`);this.scheduleReconnect()});this.ws.on('error',e=>this.log('error',`VPBridge WebSocket error: ${e.message}`))}
   disconnect(){const s=this.ws;this.ws=null;if(s){s.removeAllListeners();try{s.close(1000)}catch{}}this.setDisconnected()}
   setDisconnected(){this.stopHeartbeat();this.peerConnected=false;this.setVariableValues({connected:0,vp_connected:0,connection_state:'disconnected'})}
@@ -74,9 +74,9 @@ class VoicePrompterInstance extends InstanceBase {
 
   startHeartbeat(){this.stopHeartbeat();this.heartbeatTimer=setInterval(()=>this.heartbeatTick(),1000)}
   stopHeartbeat(){if(this.heartbeatTimer){clearInterval(this.heartbeatTimer);this.heartbeatTimer=null}if(this.heartbeatTimeout){clearTimeout(this.heartbeatTimeout);this.heartbeatTimeout=null}this.pendingPingId=null}
-  heartbeatTick(){if(!this.ws||this.ws.readyState!==WebSocket.OPEN||this.pendingPingId)return;if(Date.now()-this.lastPeerActivity>=this.heartbeatIntervalMs)this.sendPing()}
-  sendPing(){if(!this.ws||this.ws.readyState!==WebSocket.OPEN||this.pendingPingId)return;const ping=this.envelope('call','server',{method:'ping',args:{},expectsResponse:true});this.pendingPingId=ping.id;this.sendVpp(ping);this.heartbeatTimeout=setTimeout(()=>{if(this.pendingPingId!==ping.id)return;this.pendingPingId=null;this.updateStatus(InstanceStatus.ConnectionFailure,'VPBridge heartbeat timeout');try{this.ws?.terminate()}catch{}},HEARTBEAT_GRACE_MS)}
-  applyPingResponse(m){const result=isObject(m.result)?m.result:{},mailboxes=isObject(result.mailboxes)?result.mailboxes:{},vp=isObject(mailboxes.vp)?mailboxes.vp:{},hb=isObject(result.heartbeat)?result.heartbeat:{};const interval=Number(hb.intervalMs);if(Number.isInteger(interval)&&interval>=5000&&interval<=3600000)this.heartbeatIntervalMs=interval;this.peerConnected=vp.connected===true;this.setVariableValues({vp_connected:this.peerConnected?1:0,heartbeat_interval_ms:this.heartbeatIntervalMs});this.updateConnectionStatus()}
+  heartbeatTick(){if(!this.ws||this.ws.readyState!==WebSocket.OPEN||this.pendingPingId)return;if(Date.now()-this.lastActivityAt>=this.heartbeatIntervalMs)this.sendPing()}
+  sendPing(){if(!this.ws||this.ws.readyState!==WebSocket.OPEN||this.pendingPingId)return;const ping=this.envelope('call','server',{method:'ping',args:{},expectsResponse:true});this.pendingPingId=ping.id;this.lastActivityAt=Date.now();this.sendVpp(ping);this.heartbeatTimeout=setTimeout(()=>{if(this.pendingPingId!==ping.id)return;this.pendingPingId=null;this.updateStatus(InstanceStatus.ConnectionFailure,'VPBridge heartbeat timeout');try{this.ws?.terminate()}catch{}},HEARTBEAT_GRACE_MS)}
+  applyPingResponse(m){const result=isObject(m.result)?m.result:{},mailboxes=isObject(result.mailboxes)?result.mailboxes:{},vp=isObject(mailboxes.vp)?mailboxes.vp:{},hb=isObject(result.heartbeat)?result.heartbeat:{};const interval=Number(hb.intervalMs);if(Number.isInteger(interval)&&interval>=5000&&interval<=3600000)this.heartbeatIntervalMs=interval;this.peerConnected=vp.connected===true;this.lastActivityAt=Date.now();this.setVariableValues({vp_connected:this.peerConnected?1:0,heartbeat_interval_ms:this.heartbeatIntervalMs});this.updateConnectionStatus()}
   updateConnectionStatus(){if(!this.ws||this.ws.readyState!==WebSocket.OPEN){this.setVariableValues({connection_state:'disconnected'});return}if(this.peerConnected){this.setVariableValues({connection_state:'connected',vp_connected:1});this.updateStatus(InstanceStatus.Ok,'VPBridge + VoicePrompter connected')}else{this.setVariableValues({connection_state:'bridge-only',vp_connected:0});this.updateStatus(InstanceStatus.UnknownWarning??InstanceStatus.Ok,'VPBridge connected; VoicePrompter not connected')}}
 
   protocolFailure(text,raw=''){this.log('error',`VPP ERROR: ${text}`);this.setVariableValues({protocol_error:text,payload:raw,last_received:new Date().toISOString()})}
@@ -85,8 +85,8 @@ class VoicePrompterInstance extends InstanceBase {
 
   validateEnvelope(m){if(Number(m.protocolVersion)!==PROTOCOL_VERSION)return'Unsupported protocolVersion';if(typeof m.id!=='string'||!m.id)return'Missing message id';if(typeof m.type!=='string')return'Missing message type';if(!['call','event','progress','response','error'].includes(m.type))return`Unknown message type "${m.type}"`;if(!['vp','server'].includes(m.from))return`Invalid from "${m.from}"`;if(m.recipient!=='bc')return`Message recipient must be "bc"`;return null}
   handleMessage(rawData){const raw=Buffer.isBuffer(rawData)?rawData.toString('utf8'):String(rawData);let m;try{m=JSON.parse(raw)}catch{this.protocolFailure('Received invalid JSON',raw);return}if(!isObject(m)){this.protocolFailure('JSON root must be an object',raw);return}const envErr=this.validateEnvelope(m);if(envErr){this.protocolFailure(envErr,raw);return}
-    if(m.from==='vp'){this.lastPeerActivity=Date.now();this.peerConnected=true;this.updateConnectionStatus()}
-    if(this.pendingPingId&&m.from==='server'&&m.correlationId===this.pendingPingId&&(m.type==='response'||m.type==='error')){if(this.heartbeatTimeout){clearTimeout(this.heartbeatTimeout);this.heartbeatTimeout=null}this.pendingPingId=null;this.lastPeerActivity=Date.now();if(m.type==='response')this.applyPingResponse(m)}
+    if(m.from==='vp'){this.lastActivityAt=Date.now();this.peerConnected=true;this.updateConnectionStatus()}
+    if(this.pendingPingId&&m.from==='server'&&m.correlationId===this.pendingPingId&&(m.type==='response'||m.type==='error')){if(this.heartbeatTimeout){clearTimeout(this.heartbeatTimeout);this.heartbeatTimeout=null}this.pendingPingId=null;this.lastActivityAt=Date.now();if(m.type==='response')this.applyPingResponse(m)}
 
     if((m.type==='progress'||m.type==='response')&&(typeof m.correlationId!=='string'||!m.correlationId)){this.protocolFailure(`${m.type} is missing correlationId`,raw);return}
     if(m.type==='error'&&m.correlationId!==undefined&&typeof m.correlationId!=='string'){this.protocolFailure('error correlationId must be a string',raw);return}
