@@ -1,1 +1,0 @@
-VPM devel target: implement VPP Status Bar actions and synchronization per PROTOCOL.md extension.
