@@ -19,7 +19,7 @@ Every VPP message MUST contain `protocolVersion`, unique `id`, `type`, `from`, `
   "recipient": "vp",
   "source": {
     "app": "VoicePrompterModule",
-    "version": "0.9.0",
+    "version": "0.9.1",
     "companionVersion": "dev"
   },
   "timestamp": "2026-08-14T00:00:00.000+02:00"
@@ -80,26 +80,13 @@ The mode is one shared VoicePrompter state with exactly these values:
 - `top` — visible at the top;
 - `bottom` — visible at the bottom.
 
+Status Bar zone text is UTF-8/Unicode plain text. Unicode symbols such as `●`, `■`, `▶`, `⏺`, `🔴` or `🟣` are valid text when supported by the rendering font. Zone text MUST NOT be interpreted as HTML, JavaScript, CSS, markup, a URL, or executable content. A receiver MUST render it through a plain-text mechanism equivalent to DOM `textContent`; it MUST NOT use `innerHTML`, `eval`, or equivalent interpretation of zone text.
+
+Each zone text is limited to **1024 Unicode characters**. An empty string is valid and represents an intentionally empty zone.
+
 ### setStatusBarMode
 
 `setStatusBarMode` changes the shared Status Bar mode.
-
-Schema:
-
-```json
-{
-  "protocolVersion": 1,
-  "id": "...",
-  "type": "call",
-  "from": "bc",
-  "recipient": "vp",
-  "method": "setStatusBarMode",
-  "args": { "mode": "top" },
-  "expectsResponse": false,
-  "source": { "app": "VoicePrompterModule", "version": "0.9.0" },
-  "timestamp": "..."
-}
-```
 
 `args` MUST contain exactly one field, `mode`, with value `off`, `top`, or `bottom`.
 
@@ -109,40 +96,9 @@ Changing the mode through this call changes the same state as changing it locall
 
 `getStatusBarMode` obtains the authoritative current mode after connection or reconnect.
 
-Request:
+Request uses `args: {}` and `expectsResponse: true`.
 
-```json
-{
-  "protocolVersion": 1,
-  "id": "...",
-  "type": "call",
-  "from": "bc",
-  "recipient": "vp",
-  "method": "getStatusBarMode",
-  "args": {},
-  "expectsResponse": true,
-  "source": { "app": "VoicePrompterModule", "version": "0.9.0" },
-  "timestamp": "..."
-}
-```
-
-Successful response:
-
-```json
-{
-  "protocolVersion": 1,
-  "id": "...",
-  "correlationId": "<request-id>",
-  "type": "response",
-  "from": "vp",
-  "recipient": "bc",
-  "result": { "mode": "bottom" },
-  "source": { "app": "VoicePrompter", "version": "..." },
-  "timestamp": "..."
-}
-```
-
-`result` MUST contain exactly one field, `mode`, with value `off`, `top`, or `bottom`.
+Successful `result` MUST contain exactly one field, `mode`, with value `off`, `top`, or `bottom`.
 
 VPM MUST request this state after the VP mailbox becomes connected or reconnects. VPM MUST NOT treat a value cached across a disconnected session as authoritative.
 
@@ -173,7 +129,7 @@ VPM exposes the authoritative value as `status_bar_mode` (`off`, `top`, `bottom`
 
 ### setStatusBar
 
-`setStatusBar` sends generic Status Bar content from BC/VPM to VP.
+`setStatusBar` replaces the complete generic Status Bar zone set from BC/VPM to VP.
 
 ```json
 {
@@ -186,34 +142,69 @@ VPM exposes the authoritative value as `status_bar_mode` (`off`, `top`, `bottom`
   "args": {
     "zones": [
       { "text": "● REC", "align": "left" },
-      { "text": "SLIDE 4", "align": "center" },
+      { "text": "", "align": "center" },
       { "text": "01:23:45", "align": "right" }
     ]
   },
   "expectsResponse": false,
-  "source": { "app": "VoicePrompterModule", "version": "0.9.0" },
+  "source": { "app": "VoicePrompterModule", "version": "0.9.1" },
   "timestamp": "..."
 }
 ```
 
 `args` MUST contain exactly one field, `zones`.
 
-`zones` MUST contain 1 to 6 objects. Every zone MUST contain exactly:
+`zones` MUST contain 1 to 6 objects. The number of objects is the number of zones to render. Every zone MUST contain exactly:
 
-- `text`: string;
+- `text`: UTF-8/Unicode plain-text string, 0 to 1024 characters;
 - `align`: `left`, `center`, or `right`.
 
-VPP and VP do not interpret semantic meanings such as REC, LIVE, StageTimer, marker, or slide. They are plain text values. VPM MAY resolve Companion expressions/variables before sending the final strings.
+Empty zone text is valid. VPM MAY resolve Companion expressions/variables before sending the final plain-text strings.
 
-VoicePrompter owns rendering, width, clipping, layout, and top/bottom placement.
+VPP and VP do not interpret semantic meanings such as REC, LIVE, StageTimer, marker, or slide. VoicePrompter owns rendering, width, clipping, layout, and top/bottom placement.
 
 If the current mode is `off`, VoicePrompter MUST discard received Status Bar zones and MUST NOT retain them for later display.
 
 If mode is `top` or `bottom`, accepted remote zones replace VoicePrompter's internal placeholder until cleared or replaced.
 
+### setStatusBarZone
+
+`setStatusBarZone` changes one existing Status Bar zone without replacing the other zones.
+
+```json
+{
+  "protocolVersion": 1,
+  "id": "...",
+  "type": "call",
+  "from": "bc",
+  "recipient": "vp",
+  "method": "setStatusBarZone",
+  "args": {
+    "index": 3,
+    "text": "● REC",
+    "align": "left"
+  },
+  "expectsResponse": false,
+  "source": { "app": "VoicePrompterModule", "version": "0.9.1" },
+  "timestamp": "..."
+}
+```
+
+`args` MUST contain exactly:
+
+- `index`: integer from 1 through 6;
+- `text`: UTF-8/Unicode plain-text string, 0 to 1024 characters;
+- `align`: `left`, `center`, or `right`.
+
+An empty `text` intentionally empties that zone; it does not remove or renumber other zones.
+
+If the current mode is `off`, VoicePrompter MUST discard the update and MUST NOT retain it for later display.
+
+The Companion action MAY calculate `index` from variables/expressions. VPM validates the resolved value before sending. A resolved index outside 1 through 6, or a value that is not an integer, causes the Companion action to do nothing and no VPP message is sent.
+
 ### clearStatusBar
 
-`clearStatusBar` clears remote Status Bar data without changing the current mode.
+`clearStatusBar` remains part of protocol version 1 while its practical semantics are evaluated. It clears remote Status Bar data without changing the current mode.
 
 ```json
 {
@@ -225,17 +216,12 @@ If mode is `top` or `bottom`, accepted remote zones replace VoicePrompter's inte
   "method": "clearStatusBar",
   "args": {},
   "expectsResponse": false,
-  "source": { "app": "VoicePrompterModule", "version": "0.9.0" },
+  "source": { "app": "VoicePrompterModule", "version": "0.9.1" },
   "timestamp": "..."
 }
 ```
 
-`clearStatusBar` is explicitly different from `setStatusBarMode({"mode":"off"})`:
-
-- `clearStatusBar` removes remote content only;
-- `setStatusBarMode(off)` hides the Status Bar.
-
-When remote content is cleared while mode remains `top` or `bottom`, VoicePrompter may display its own internal placeholder. The placeholder is not part of VPP and is not generated by VPM.
+`clearStatusBar` is explicitly different from `setStatusBarMode({"mode":"off"})`: it removes remote content only; it does not hide the Status Bar. When remote content is cleared while mode remains `top` or `bottom`, VoicePrompter may display its own internal placeholder.
 
 Remote zone data is session/display data and SHOULD NOT be restored automatically after reconnect unless explicitly sent again by VPM.
 
@@ -297,39 +283,11 @@ Recommended common error codes include `INVALID_MESSAGE`, `INVALID_ROUTING`, `UN
 
 `ping` is a system `call` handled by VPBridge. It verifies the bridge connection and obtains current mailbox state and heartbeat policy.
 
-A ping MUST use:
-
-- `from`: caller mailbox (`vp` or `bc`);
-- `recipient: "server"`;
-- `method: "ping"`;
-- `args: {}`;
-- `expectsResponse: true`.
+A ping MUST use `from` as caller mailbox (`vp` or `bc`), `recipient: "server"`, `method: "ping"`, `args: {}`, and `expectsResponse: true`.
 
 VPBridge MUST consume the ping locally and MUST NOT forward it.
 
-Response:
-
-```json
-{
-  "protocolVersion": 1,
-  "id": "...",
-  "correlationId": "<ping-id>",
-  "type": "response",
-  "from": "server",
-  "recipient": "bc",
-  "result": {
-    "mailboxes": {
-      "vp": { "connected": true },
-      "bc": { "connected": true }
-    },
-    "heartbeat": { "intervalMs": 30000 }
-  },
-  "source": { "app": "VoicePrompterBridge", "version": "..." },
-  "timestamp": "..."
-}
-```
-
-The same response shape is used for a ping originating from `vp`; only `recipient` changes.
+The successful result contains both mailbox connection states and `heartbeat.intervalMs`. The same response shape is used for a ping originating from `vp`; only `recipient` changes.
 
 An unsupported message addressed to `server` SHOULD receive a correlated `error` and MUST NOT be forwarded.
 
@@ -357,16 +315,7 @@ Clients SHOULD expose:
 
 ## VPBridge transport rule
 
-VPBridge SHALL:
-
-1. authenticate according to transport configuration;
-2. accept only complete syntactically valid JSON messages;
-3. verify routing envelope fields needed for transport (`from`, `recipient`);
-4. route messages addressed to `vp` or `bc` unchanged according to FIFO/buffer rules;
-5. consume messages addressed to `server` locally and never forward them;
-6. interpret only system methods explicitly defined by VPP for `recipient: "server"`;
-7. maintain current connected/disconnected state of the `vp` and `bc` mailboxes;
-8. reject invalid JSON and log the drop diagnostically.
+VPBridge SHALL authenticate according to transport configuration, accept only complete syntactically valid JSON messages, verify routing envelope fields needed for transport, route `vp`/`bc` messages unchanged according to FIFO/buffer rules, consume `server` messages locally, maintain mailbox connection state, and reject invalid JSON diagnostically.
 
 Except for routing and explicit `server` methods, VPBridge SHALL NOT interpret application-level VPP fields such as application methods, marker commands, Status Bar data, application arguments, results, progress data, or application errors.
 
