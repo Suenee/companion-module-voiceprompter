@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.0 (devel)
+- Added VPP Status Bar actions: `setStatusBarMode`, `setStatusBar`, and `clearStatusBar`.
+- Added automatic `getStatusBarMode` synchronization after VP connects or reconnects.
+- Added `statusBarModeChanged` event parsing for local or remote mode changes in VoicePrompter.
+- Added Companion variables `status_bar_mode` and derived `status_bar_enabled`.
+- Added generic 1–6 zone Status Bar action with Companion expressions/variables and left/center/right alignment.
+- Extended `PROTOCOL.md` with deterministic Status Bar schemas and reconnect synchronization rules.
+
 ## 0.8.0 (devel)
 - Implemented explicit VPP `from` / `recipient` routing.
 - Navigation calls now use `expectsResponse: true`.
@@ -10,7 +18,7 @@
 - Added Companion variables `vp_connected`, `connection_state`, `heartbeat_interval_ms`, `from`, and `recipient`.
 - Removed legacy positional `arg1..arg8` variables and generic `args` variable; marker arguments are exposed explicitly as `marker_args` JSON.
 - Marker events with `expectsResponse: true` receive a terminal acknowledgement after successful parsing.
-- `devel` updater now follows the `devel` branch.
+- `devel` updater follows the `devel` branch.
 
 ## 0.7.0
 - Updated parser to the VPP v1 marker-event format.
