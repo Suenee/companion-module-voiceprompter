@@ -4,7 +4,7 @@
   "name": "VoicePrompter",
   "shortname": "VoicePrompter",
   "description": "Bridge connection between VoicePrompter and Bitfocus Companion through VoicePrompter Bridge.",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "license": "MIT",
   "repository": "https://github.com/Suenee/companion-module-voiceprompter",
   "bugs": "https://github.com/Suenee/companion-module-voiceprompter/issues",
@@ -13,5 +13,5 @@
   "runtime": { "type": "node22", "api": "nodejs-ipc", "apiVersion": "0.0.0", "entrypoint": "../main.js" },
   "manufacturer": "VoicePrompter",
   "products": ["VoicePrompter Bridge"],
-  "keywords": ["VoicePrompter", "VPBridge", "WebSocket", "Marker", "Teleprompter", "VPP"]
+  "keywords": ["VoicePrompter", "VPBridge", "WebSocket", "Marker", "Teleprompter", "Status Bar", "VPP"]
 }
