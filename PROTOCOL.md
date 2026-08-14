@@ -19,7 +19,7 @@ Every VPP message MUST contain `protocolVersion`, unique `id`, `type`, `from`, `
   "recipient": "vp",
   "source": {
     "app": "VoicePrompterModule",
-    "version": "0.9.1",
+    "version": "0.9.4",
     "companionVersion": "dev"
   },
   "timestamp": "2026-08-14T00:00:00.000+02:00"
@@ -80,6 +80,8 @@ The mode is one shared VoicePrompter state with exactly these values:
 - `top` — visible at the top;
 - `bottom` — visible at the bottom.
 
+The active zone count is an independent runtime value from **1 through 6**. Changing the active count changes how many zone slots are rendered. It MUST NOT renumber zones. Reducing the count MUST NOT require deleting stored in-session data for higher-numbered zones; increasing the count MAY therefore expose data previously set in the same connected session. Remote Status Bar data is still session/display data and SHOULD NOT be restored automatically after reconnect.
+
 Status Bar zone text is UTF-8/Unicode plain text. Unicode symbols such as `●`, `■`, `▶`, `⏺`, `🔴` or `🟣` are valid text when supported by the rendering font. Zone text MUST NOT be interpreted as HTML, JavaScript, CSS, markup, a URL, or executable content. A receiver MUST render it through a plain-text mechanism equivalent to DOM `textContent`; it MUST NOT use `innerHTML`, `eval`, or equivalent interpretation of zone text.
 
 Each zone text is limited to **1024 Unicode characters**. An empty string is valid and represents an intentionally empty zone.
@@ -127,9 +129,9 @@ The event SHOULD be emitted only when the effective value actually changes.
 
 VPM exposes the authoritative value as `status_bar_mode` (`off`, `top`, `bottom`) and MAY expose a derived enabled value where `off = 0` and `top/bottom = 1`.
 
-### setStatusBar
+### setStatusBarZoneCount
 
-`setStatusBar` replaces the complete generic Status Bar zone set from BC/VPM to VP.
+`setStatusBarZoneCount` changes only the number of active/rendered Status Bar zones.
 
 ```json
 {
@@ -138,38 +140,31 @@ VPM exposes the authoritative value as `status_bar_mode` (`off`, `top`, `bottom`
   "type": "call",
   "from": "bc",
   "recipient": "vp",
-  "method": "setStatusBar",
+  "method": "setStatusBarZoneCount",
   "args": {
-    "zones": [
-      { "text": "● REC", "align": "left" },
-      { "text": "", "align": "center" },
-      { "text": "01:23:45", "align": "right" }
-    ]
+    "count": 4
   },
   "expectsResponse": false,
-  "source": { "app": "VoicePrompterModule", "version": "0.9.1" },
+  "source": { "app": "VoicePrompterModule", "version": "0.9.4" },
   "timestamp": "..."
 }
 ```
 
-`args` MUST contain exactly one field, `zones`.
+`args` MUST contain exactly one field:
 
-`zones` MUST contain 1 to 6 objects. The number of objects is the number of zones to render. Every zone MUST contain exactly:
+- `count`: integer from 1 through 6.
 
-- `text`: UTF-8/Unicode plain-text string, 0 to 1024 characters;
-- `align`: `left`, `center`, or `right`.
+A value outside 1 through 6 or a non-integer is invalid. A deterministic receiver MUST reject invalid protocol arguments according to the normal VPP rules.
 
-Empty zone text is valid. VPM MAY resolve Companion expressions/variables before sending the final plain-text strings.
+The Companion action MAY calculate `count` from variables/expressions. VPM validates the resolved value before sending. If the result is not an integer in the range 1 through 6, the Companion action does nothing and no VPP message is sent.
 
-VPP and VP do not interpret semantic meanings such as REC, LIVE, StageTimer, marker, or slide. VoicePrompter owns rendering, width, clipping, layout, and top/bottom placement.
+Changing the count does not itself change zone text or alignment. Reducing the count does not renumber zones and SHOULD preserve higher-numbered zone state for the current connected session so that a later increase can make it visible again.
 
-If the current mode is `off`, VoicePrompter MUST discard received Status Bar zones and MUST NOT retain them for later display.
-
-If mode is `top` or `bottom`, accepted remote zones replace VoicePrompter's internal placeholder until cleared or replaced.
+If the current Status Bar mode is `off`, VoicePrompter MUST discard remote Status Bar display updates, including `setStatusBarZoneCount`, and MUST NOT queue them for later display.
 
 ### setStatusBarZone
 
-`setStatusBarZone` changes one existing Status Bar zone without replacing the other zones.
+`setStatusBarZone` changes one Status Bar zone without replacing the other zones.
 
 ```json
 {
@@ -185,7 +180,7 @@ If mode is `top` or `bottom`, accepted remote zones replace VoicePrompter's inte
     "align": "left"
   },
   "expectsResponse": false,
-  "source": { "app": "VoicePrompterModule", "version": "0.9.1" },
+  "source": { "app": "VoicePrompterModule", "version": "0.9.4" },
   "timestamp": "..."
 }
 ```
@@ -198,9 +193,28 @@ If mode is `top` or `bottom`, accepted remote zones replace VoicePrompter's inte
 
 An empty `text` intentionally empties that zone; it does not remove or renumber other zones.
 
+A zone MAY be updated even when its index is currently above the active zone count; it remains non-rendered until the active count includes it. This permits dynamic count changes without forcing clients to resend unchanged data. This in-session state MUST NOT be treated as persistent across reconnects.
+
 If the current mode is `off`, VoicePrompter MUST discard the update and MUST NOT retain it for later display.
 
 The Companion action MAY calculate `index` from variables/expressions. VPM validates the resolved value before sending. A resolved index outside 1 through 6, or a value that is not an integer, causes the Companion action to do nothing and no VPP message is sent.
+
+### Set Status Bar aggregate behavior in VPM
+
+`Set Status Bar` is a Companion convenience action, not an additional VPP method requirement. Its UI always exposes six zone groups plus a `Number of active zones` selector.
+
+When executed with active count `N`, VPM performs the equivalent of these normal VPP calls, in this order:
+
+1. one `setStatusBarZoneCount({"count": N})` call;
+2. one `setStatusBarZone(...)` call for each index `1` through `N`.
+
+Zone groups above `N` remain stored in the Companion action configuration but are not evaluated and no message is sent for them. Empty zone text within `1..N` is valid and is sent as an empty string.
+
+This aggregate action intentionally composes the same public methods that are also available as individual Companion actions. VoicePrompter does not need a separate `setStatusBar` implementation for this aggregate behavior.
+
+### Legacy setStatusBar
+
+Earlier VPM development builds used a `setStatusBar` method that replaced the complete zone array. VPM 0.9.4 and later no longer use this method for the aggregate Companion action. New VoicePrompter implementations SHOULD implement `setStatusBarZoneCount` and `setStatusBarZone` as the canonical zone-control methods. Existing `setStatusBar` handling MAY be retained temporarily for compatibility, but clients MUST NOT depend on it for new behavior.
 
 ### clearStatusBar
 
@@ -216,7 +230,7 @@ The Companion action MAY calculate `index` from variables/expressions. VPM valid
   "method": "clearStatusBar",
   "args": {},
   "expectsResponse": false,
-  "source": { "app": "VoicePrompterModule", "version": "0.9.1" },
+  "source": { "app": "VoicePrompterModule", "version": "0.9.4" },
   "timestamp": "..."
 }
 ```
