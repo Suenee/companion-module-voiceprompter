@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.7 (devel)
+- Removed the stale `static-text` diagnostics block from the connection configuration editor.
+- Added live diagnostic variables: `diagnostic_level`, `diagnostic_status`, `diagnostic_vpbridge`, `diagnostic_voiceprompter`, and `diagnostic_reason`.
+- Unified Companion connection status and diagnostic variables behind the same state-update path, so they cannot intentionally report different health states.
+- Preserved color semantics: green = fully connected, yellow = warning/peer unavailable or graceful disconnect, red = bridge/config/auth/heartbeat failure, gray = connecting/unknown.
+- Added a `Connection Diagnostics` preset using live variables.
+
 ## 0.9.6 (devel)
 - Added visible connection diagnostics to the module configuration panel.
 - Diagnostics show overall state, VPBridge state, VoicePrompter state, and the current reason for Warning/Error.
