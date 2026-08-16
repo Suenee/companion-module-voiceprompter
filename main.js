@@ -2,7 +2,7 @@ import { InstanceBase, InstanceStatus, runEntrypoint } from '@companion-module/b
 import WebSocket from 'ws'
 import { randomBytes } from 'node:crypto'
 
-const MODULE_VERSION = '0.9.5'
+const MODULE_VERSION = '0.9.6'
 const PROTOCOL_VERSION = 1
 const DEFAULT_HOST = '127.0.0.1'
 const DEFAULT_PORT = 8170
@@ -14,6 +14,7 @@ const STATUS_BAR_TEXT_MAX = 1024
 const STATUS_BAR_MODES = new Set(['off', 'top', 'bottom'])
 const STATUS_BAR_ALIGNS = new Set(['left', 'center', 'right'])
 const SERVER_DISCONNECT_REASONS = new Set(['shutdown', 'restart', 'exit'])
+const DIAGNOSTIC_ICONS = { green:'🟢', yellow:'🟡', red:'🔴', gray:'⚪' }
 
 const NAV_METHODS = { GO_START:['goStart',false], MARKER_BACK:['markerBack',true], GO_BACK:['goBack',true], GO_CURRENT:['goCurrent',true], GO_NEXT:['goNext',true], MARKER_NEXT:['markerNext',true], GO_FINISH:['goFinish',false] }
 function uuidV7(){const b=randomBytes(16),ms=BigInt(Date.now());b[0]=Number((ms>>40n)&255n);b[1]=Number((ms>>32n)&255n);b[2]=Number((ms>>24n)&255n);b[3]=Number((ms>>16n)&255n);b[4]=Number((ms>>8n)&255n);b[5]=Number(ms&255n);b[6]=(b[6]&15)|112;b[8]=(b[8]&63)|128;const h=b.toString('hex');return`${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`}
@@ -23,12 +24,33 @@ function hasOnlyKeys(obj,allowed){return Object.keys(obj).every(k=>allowed.inclu
 function unicodeLength(v){return Array.from(String(v)).length}
 
 class VoicePrompterInstance extends InstanceBase {
- config={};ws=null;reconnectTimer=null;heartbeatTimer=null;heartbeatTimeout=null;pendingPingId=null;pendingStatusBarModeId=null;destroyed=false;heartbeatIntervalMs=DEFAULT_HEARTBEAT_MS;lastActivityAt=Date.now();peerConnected=false;statusBarModeKnown=false;serverDisconnectReason=null
- async init(config){this.config=this.normalizeConfig(config,true);this.destroyed=false;this.defineVariables();this.defineActions();this.definePresets();this.resetVariables();this.connect()}
+ config={};ws=null;reconnectTimer=null;heartbeatTimer=null;heartbeatTimeout=null;pendingPingId=null;pendingStatusBarModeId=null;destroyed=false;heartbeatIntervalMs=DEFAULT_HEARTBEAT_MS;lastActivityAt=Date.now();peerConnected=false;statusBarModeKnown=false;serverDisconnectReason=null;diagnosticLevel='gray';diagnosticReason='Initializing'
+ async init(config){this.config=this.normalizeConfig(config,true);this.destroyed=false;this.setDiagnostic('gray','Initializing VoicePrompter connection');this.defineVariables();this.defineActions();this.definePresets();this.resetVariables();this.connect()}
  async destroy(){this.destroyed=true;this.clearReconnect();this.stopHeartbeat();await this.announceDisconnecting('user');this.disconnect()}
  async configUpdated(config){const old=this.getUrl();this.config=this.normalizeConfig(config,true);if(old!==this.getUrl()){await this.announceDisconnecting('user');this.disconnect();this.connect()}}
  normalizeConfig(config,persist=false){const n={...(config??{})};let changed=false;let host=String(n.host??'').trim(),port=Number(n.port),apiKey=String(n.apiKey??'').trim();if((!host||!Number.isInteger(port)||port<1||port>65535)&&n.url){try{const u=new URL(String(n.url));if(!host&&u.hostname){host=u.hostname;changed=true}if(!Number.isInteger(port)||port<1||port>65535){port=Number(u.port||DEFAULT_PORT);changed=true}}catch{}}if(!host){host=DEFAULT_HOST;changed=true}if(!Number.isInteger(port)||port<1||port>65535){port=DEFAULT_PORT;changed=true}n.host=host;n.port=port;n.apiKey=apiKey;if(persist&&changed)this.saveConfig(n);return n}
- getConfigFields(){return[{type:'textinput',id:'host',label:'VPBridge IP Address',width:8,default:DEFAULT_HOST},{type:'number',id:'port',label:'Port',width:4,default:DEFAULT_PORT,min:1,max:65535,step:1,required:true},{type:'textinput',id:'apiKey',label:'API Key',width:12,default:'',tooltip:'Required when VPBridge is set to All Interfaces. Leave empty for Local only.'},{type:'checkbox',id:'debug',label:'Debug incoming messages',width:6,default:false}]}
+ setDiagnostic(level,reason){this.diagnosticLevel=DIAGNOSTIC_ICONS[level]?level:'gray';this.diagnosticReason=String(reason??'')}
+ getDiagnosticView(){
+  const overallIcon=DIAGNOSTIC_ICONS[this.diagnosticLevel]??DIAGNOSTIC_ICONS.gray
+  const overallLabel=this.diagnosticLevel==='green'?'Connected':this.diagnosticLevel==='yellow'?'Warning':this.diagnosticLevel==='red'?'Error':'Connecting / unknown'
+  let bridge
+  if(this.serverDisconnectReason)bridge=`${DIAGNOSTIC_ICONS.yellow} ${this.serverDisconnectReason==='restart'?'Restarting':this.serverDisconnectReason==='shutdown'?'Shutting down':'Exiting'}`
+  else if(this.ws?.readyState===WebSocket.OPEN)bridge=`${DIAGNOSTIC_ICONS.green} Connected`
+  else if(this.diagnosticLevel==='gray')bridge=`${DIAGNOSTIC_ICONS.gray} Connecting / unknown`
+  else bridge=`${DIAGNOSTIC_ICONS.red} Disconnected`
+  const vp=this.ws?.readyState===WebSocket.OPEN?(this.peerConnected?`${DIAGNOSTIC_ICONS.green} Connected`:`${DIAGNOSTIC_ICONS.yellow} Disconnected`):`${DIAGNOSTIC_ICONS.gray} Unknown`
+  return{overall:`${overallIcon} ${overallLabel}`,bridge,vp,reason:this.diagnosticReason||'—'}
+ }
+ getConfigFields(){const d=this.getDiagnosticView();return[
+  {type:'textinput',id:'host',label:'VPBridge IP Address',width:8,default:DEFAULT_HOST},
+  {type:'number',id:'port',label:'Port',width:4,default:DEFAULT_PORT,min:1,max:65535,step:1,required:true},
+  {type:'textinput',id:'apiKey',label:'API Key',width:12,default:'',tooltip:'Required when VPBridge is set to All Interfaces. Leave empty for Local only.'},
+  {type:'checkbox',id:'debug',label:'Debug incoming messages',width:6,default:false},
+  {type:'static-text',id:'diag_overall',label:'Connection status',value:d.overall,width:12},
+  {type:'static-text',id:'diag_bridge',label:'VPBridge',value:d.bridge,width:6},
+  {type:'static-text',id:'diag_vp',label:'VoicePrompter',value:d.vp,width:6},
+  {type:'static-text',id:'diag_reason',label:'Reason',value:d.reason,width:12}
+ ]}
  getConnectionSettings(){let host=String(this.config?.host??'').trim()||DEFAULT_HOST,port=Number(this.config?.port);if(!Number.isInteger(port))port=DEFAULT_PORT;return{host,port,apiKey:String(this.config?.apiKey??'').trim()}}
  getUrl(){const{host,port,apiKey}=this.getConnectionSettings();const u=new URL(`ws://${host}:${port}/bc`);if(apiKey)u.searchParams.set('apiKey',apiKey);return u.toString()}
  getDisplayUrl(){const{host,port}=this.getConnectionSettings();return`ws://${host}:${port}/bc`}
@@ -76,7 +98,19 @@ class VoicePrompterInstance extends InstanceBase {
   })
  }
  definePresets(){const p=(name,text,instruction,offset)=>{const options={instruction};if(offset!==undefined)options.offset=String(offset);return{type:'button',category:'Navigation',name,style:{text,size:'18',color:0xffffff,bgcolor:0x000000},steps:[{down:[{actionId:'navigation',options}],up:[]}],feedbacks:[]}};this.setPresetDefinitions({navigation_go_start:p('Go Start','|<\nGo Start','GO_START'),navigation_marker_back:p('Marker Back','[<\nMarker Back','MARKER_BACK',1),navigation_go_back:p('Go Back','<<\nGo Back','GO_BACK',1),navigation_go_current:p('Go Current','<|\nGo Current','GO_CURRENT',1),navigation_go_next:p('Go Next','>>\nGo Next','GO_NEXT',1),navigation_marker_next:p('Marker Next','>]\nMarker Next','MARKER_NEXT',1),navigation_go_finish:p('Go Finish','>|\nGo Finish','GO_FINISH')})}
- connect(){this.clearReconnect();this.stopHeartbeat();this.clearStatusBarModeVariables();this.serverDisconnectReason=null;const{apiKey}=this.getConnectionSettings();if(apiKey&&!/^[a-fA-F0-9]{64}$/.test(apiKey)){this.updateStatus(InstanceStatus.BadConfig,'API Key must be 64 hexadecimal characters');return}this.updateStatus(InstanceStatus.Connecting,`Connecting to ${this.getDisplayUrl()}`);try{this.ws=new WebSocket(this.getUrl())}catch(e){this.updateStatus(InstanceStatus.ConnectionFailure,e.message);this.scheduleReconnect();return}this.ws.on('unexpected-response',(_req,res)=>{const sc=res.statusCode??0;res.resume();this.setDisconnected();this.updateStatus(InstanceStatus.ConnectionFailure,sc===401?'VPBridge authentication failed (401)':`VPBridge rejected connection (${sc})`);this.scheduleReconnect()});this.ws.on('open',()=>{this.serverDisconnectReason=null;this.setVariableValues({connected:1,connection_state:'bridge-only'});this.peerConnected=false;this.lastActivityAt=Date.now();this.updateConnectionStatus();this.startHeartbeat();this.sendPing()});this.ws.on('message',d=>this.handleMessage(d));this.ws.on('close',c=>{const gracefulReason=this.serverDisconnectReason;this.setDisconnected();if(gracefulReason)this.updateStatus(InstanceStatus.UnknownWarning??InstanceStatus.Disconnected,`VPBridge ${gracefulReason}; reconnecting`);else this.updateStatus(InstanceStatus.Disconnected,`VPBridge disconnected (${c})`);this.scheduleReconnect()});this.ws.on('error',e=>this.log('error',`VPBridge WebSocket error: ${e.message}`))}
+ connect(){
+  this.clearReconnect();this.stopHeartbeat();this.clearStatusBarModeVariables();this.serverDisconnectReason=null
+  this.setDiagnostic('gray',`Connecting to ${this.getDisplayUrl()}`)
+  const{apiKey}=this.getConnectionSettings()
+  if(apiKey&&!/^[a-fA-F0-9]{64}$/.test(apiKey)){const msg='API Key must be 64 hexadecimal characters';this.setDiagnostic('red',msg);this.updateStatus(InstanceStatus.BadConfig,msg);return}
+  this.updateStatus(InstanceStatus.Connecting,`Connecting to ${this.getDisplayUrl()}`)
+  try{this.ws=new WebSocket(this.getUrl())}catch(e){this.setDiagnostic('red',e.message);this.updateStatus(InstanceStatus.ConnectionFailure,e.message);this.scheduleReconnect();return}
+  this.ws.on('unexpected-response',(_req,res)=>{const sc=res.statusCode??0;res.resume();const msg=sc===401?'VPBridge authentication failed (401)':`VPBridge rejected connection (${sc})`;this.setDisconnected();this.setDiagnostic('red',msg);this.updateStatus(InstanceStatus.ConnectionFailure,msg);this.scheduleReconnect()})
+  this.ws.on('open',()=>{this.serverDisconnectReason=null;this.setVariableValues({connected:1,connection_state:'bridge-only'});this.peerConnected=false;this.lastActivityAt=Date.now();this.setDiagnostic('yellow','VPBridge connected; checking VoicePrompter mailbox');this.updateConnectionStatus();this.startHeartbeat();this.sendPing()})
+  this.ws.on('message',d=>this.handleMessage(d))
+  this.ws.on('close',c=>{const gracefulReason=this.serverDisconnectReason;this.setDisconnected();if(gracefulReason){const msg=`VPBridge ${gracefulReason}; reconnecting`;this.setDiagnostic('yellow',msg);this.updateStatus(InstanceStatus.UnknownWarning??InstanceStatus.Disconnected,msg)}else{const msg=`VPBridge disconnected (${c})`;this.setDiagnostic('red',msg);this.updateStatus(InstanceStatus.Disconnected,msg)}this.scheduleReconnect()})
+  this.ws.on('error',e=>{this.setDiagnostic('red',`VPBridge WebSocket error: ${e.message}`);this.log('error',`VPBridge WebSocket error: ${e.message}`)})
+ }
  disconnect(){const s=this.ws;this.ws=null;if(s){s.removeAllListeners();try{s.close(1000)}catch{}}this.setDisconnected()}
  setDisconnected(){this.stopHeartbeat();this.peerConnected=false;this.clearStatusBarModeVariables();this.setVariableValues({connected:0,vp_connected:0,connection_state:'disconnected'})}
  scheduleReconnect(){if(this.destroyed||this.reconnectTimer)return;this.reconnectTimer=setTimeout(()=>{this.reconnectTimer=null;if(!this.destroyed)this.connect()},RECONNECT_MS)}
@@ -84,10 +118,10 @@ class VoicePrompterInstance extends InstanceBase {
  startHeartbeat(){this.stopHeartbeat();this.heartbeatTimer=setInterval(()=>this.heartbeatTick(),1000)}
  stopHeartbeat(){if(this.heartbeatTimer){clearInterval(this.heartbeatTimer);this.heartbeatTimer=null}if(this.heartbeatTimeout){clearTimeout(this.heartbeatTimeout);this.heartbeatTimeout=null}this.pendingPingId=null}
  heartbeatTick(){if(!this.ws||this.ws.readyState!==WebSocket.OPEN||this.pendingPingId)return;if(Date.now()-this.lastActivityAt>=this.heartbeatIntervalMs)this.sendPing()}
- sendPing(){if(!this.ws||this.ws.readyState!==WebSocket.OPEN||this.pendingPingId)return;const ping=this.envelope('call','server',{method:'ping',args:{},expectsResponse:true});this.pendingPingId=ping.id;this.lastActivityAt=Date.now();this.sendVpp(ping);this.heartbeatTimeout=setTimeout(()=>{if(this.pendingPingId!==ping.id)return;this.pendingPingId=null;this.updateStatus(InstanceStatus.ConnectionFailure,'VPBridge heartbeat timeout');try{this.ws?.terminate()}catch{}},HEARTBEAT_GRACE_MS)}
+ sendPing(){if(!this.ws||this.ws.readyState!==WebSocket.OPEN||this.pendingPingId)return;const ping=this.envelope('call','server',{method:'ping',args:{},expectsResponse:true});this.pendingPingId=ping.id;this.lastActivityAt=Date.now();this.sendVpp(ping);this.heartbeatTimeout=setTimeout(()=>{if(this.pendingPingId!==ping.id)return;this.pendingPingId=null;const msg='VPBridge heartbeat timeout';this.setDiagnostic('red',msg);this.updateStatus(InstanceStatus.ConnectionFailure,msg);try{this.ws?.terminate()}catch{}},HEARTBEAT_GRACE_MS)}
  applyPingResponse(m){const result=isObject(m.result)?m.result:{},mailboxes=isObject(result.mailboxes)?result.mailboxes:{},vp=isObject(mailboxes.vp)?mailboxes.vp:{},hb=isObject(result.heartbeat)?result.heartbeat:{};const interval=Number(hb.intervalMs);if(Number.isInteger(interval)&&interval>=5000&&interval<=3600000)this.heartbeatIntervalMs=interval;const wasConnected=this.peerConnected;this.peerConnected=vp.connected===true;this.lastActivityAt=Date.now();if(!this.peerConnected)this.clearStatusBarModeVariables();this.setVariableValues({vp_connected:this.peerConnected?1:0,heartbeat_interval_ms:this.heartbeatIntervalMs});this.updateConnectionStatus();if(this.peerConnected&&(!wasConnected||!this.statusBarModeKnown))this.requestStatusBarMode()}
  requestStatusBarMode(){if(!this.peerConnected||this.pendingStatusBarModeId||!this.ws||this.ws.readyState!==WebSocket.OPEN)return;const req=this.envelope('call','vp',{method:'getStatusBarMode',args:{},expectsResponse:true});this.pendingStatusBarModeId=req.id;this.sendVpp(req)}
- updateConnectionStatus(){if(!this.ws||this.ws.readyState!==WebSocket.OPEN){this.setVariableValues({connection_state:'disconnected'});return}if(this.peerConnected){this.setVariableValues({connection_state:'connected',vp_connected:1});this.updateStatus(InstanceStatus.Ok,'VPBridge + VoicePrompter connected')}else{this.setVariableValues({connection_state:'bridge-only',vp_connected:0});this.updateStatus(InstanceStatus.UnknownWarning??InstanceStatus.Ok,'VPBridge connected; VoicePrompter not connected')}}
+ updateConnectionStatus(){if(!this.ws||this.ws.readyState!==WebSocket.OPEN){this.setVariableValues({connection_state:'disconnected'});return}if(this.peerConnected){const msg='VPBridge + VoicePrompter connected';this.setVariableValues({connection_state:'connected',vp_connected:1});this.setDiagnostic('green',msg);this.updateStatus(InstanceStatus.Ok,msg)}else{const msg='VPBridge connected; VoicePrompter not connected';this.setVariableValues({connection_state:'bridge-only',vp_connected:0});this.setDiagnostic('yellow',msg);this.updateStatus(InstanceStatus.UnknownWarning??InstanceStatus.Ok,msg)}}
  protocolFailure(text,raw=''){this.log('error',`VPP ERROR: ${text}`);this.setVariableValues({protocol_error:text,payload:raw,last_received:new Date().toISOString()})}
  sendAck(m,result={success:true}){this.sendVpp(this.envelope('response',String(m.from),{correlationId:m.id,result}))}
  sendError(m,code,message,details){this.sendVpp(this.envelope('error',String(m.from),{correlationId:m.id,error:{code,message,...(details===undefined?{}:{details})}}))}
@@ -118,10 +152,10 @@ class VoicePrompterInstance extends InstanceBase {
     const reason=m.args.reason
     if(m.from==='vp'){
      if(reason!=='user'){if(m.expectsResponse===true)this.sendError(m,'INVALID_ARGUMENT','Invalid VP disconnecting reason');this.protocolFailure('Invalid VP disconnecting reason',raw);return}
-     this.peerConnected=false;this.clearStatusBarModeVariables();this.setVariableValues({vp_connected:0,connection_state:'bridge-only'});this.updateStatus(InstanceStatus.UnknownWarning??InstanceStatus.Ok,'VPBridge connected; VoicePrompter disconnecting')
+     const msg='VoicePrompter announced intentional disconnect';this.peerConnected=false;this.clearStatusBarModeVariables();this.setVariableValues({vp_connected:0,connection_state:'bridge-only'});this.setDiagnostic('yellow',msg);this.updateStatus(InstanceStatus.UnknownWarning??InstanceStatus.Ok,msg)
     }else if(m.from==='server'){
      if(!SERVER_DISCONNECT_REASONS.has(reason)){if(m.expectsResponse===true)this.sendError(m,'INVALID_ARGUMENT','Invalid server disconnecting reason');this.protocolFailure('Invalid server disconnecting reason',raw);return}
-     this.serverDisconnectReason=reason;this.stopHeartbeat();this.peerConnected=false;this.clearStatusBarModeVariables();this.setVariableValues({connected:0,vp_connected:0,connection_state:'disconnected'});this.updateStatus(InstanceStatus.UnknownWarning??InstanceStatus.Disconnected,`VPBridge ${reason}; reconnecting`)
+     const msg=`VPBridge ${reason}; reconnecting`;this.serverDisconnectReason=reason;this.stopHeartbeat();this.peerConnected=false;this.clearStatusBarModeVariables();this.setVariableValues({connected:0,vp_connected:0,connection_state:'disconnected'});this.setDiagnostic('yellow',msg);this.updateStatus(InstanceStatus.UnknownWarning??InstanceStatus.Disconnected,msg)
     }
    }else{if(m.expectsResponse===true)this.sendError(m,'INVALID_MESSAGE',`Unknown event "${m.event}"`);this.protocolFailure(`Unknown event "${m.event}"`,raw);return}
   }
