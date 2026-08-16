@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.9.8 (devel)
+- Removed the aggregate `Set Status Bar` action completely.
+- Added `Maximum Status Bar zones` to VPM configuration: user range 1–10, default 6. This is only a practical VPM UI limit; VPP itself has no maximum zone count.
+- `Set Status Bar Zone Count` and `Set Status Bar Zone` now validate against the configured VPM maximum instead of a hard-coded 1–6 protocol limit.
+- Added a persistent authoritative Status Bar snapshot in VPM containing active zone count and last resolved text/alignment for known zones.
+- Status Bar actions update the snapshot when executed even if VP is temporarily unavailable; the state is replayed when VP reconnects.
+- After VP reconnects, VPM first synchronizes `getStatusBarMode`; when mode is `top` or `bottom`, it replays the stored zone count and zone data.
+- When `statusBarModeChanged` changes from `off` to `top`/`bottom`, VPM replays the snapshot automatically.
+- `Clear Status Bar` now clears stored zone content too, preventing old data from returning after reconnect.
+- Reducing the configured maximum clamps the active zone count but retains higher-numbered stored zone data for possible later reuse.
+- Added variables `status_bar_zone_count`, `status_bar_max_zones`, and `status_bar_snapshot`.
+
 ## 0.9.7 (devel)
 - Removed the stale `static-text` diagnostics block from the connection configuration editor.
 - Added live diagnostic variables: `diagnostic_level`, `diagnostic_status`, `diagnostic_vpbridge`, `diagnostic_voiceprompter`, and `diagnostic_reason`.
@@ -14,11 +26,8 @@
 - Diagnostics use Companion `static-text` config fields and reflect the current module state when the configuration editor is opened.
 
 ## 0.9.0 (devel)
-- Added VPP Status Bar actions: `setStatusBarMode`, `setStatusBar`, and `clearStatusBar`.
-- Added automatic `getStatusBarMode` synchronization after VP connects or reconnects.
-- Added `statusBarModeChanged` event parsing for local or remote mode changes in VoicePrompter.
+- Added VPP Status Bar actions and automatic mode synchronization.
 - Added Companion variables `status_bar_mode` and derived `status_bar_enabled`.
-- Added generic 1–6 zone Status Bar action with Companion expressions/variables and left/center/right alignment.
 - Extended `PROTOCOL.md` with deterministic Status Bar schemas and reconnect synchronization rules.
 
 ## 0.8.0 (devel)
