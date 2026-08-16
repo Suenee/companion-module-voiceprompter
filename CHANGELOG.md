@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.6 (devel)
+- Added visible connection diagnostics to the module configuration panel.
+- Diagnostics show overall state, VPBridge state, VoicePrompter state, and the current reason for Warning/Error.
+- Preserved the established color logic: green = connected, yellow = warning/peer unavailable or graceful server departure, red = connection/configuration failure, gray = connecting/unknown.
+- Diagnostics use Companion `static-text` config fields and reflect the current module state when the configuration editor is opened.
+
 ## 0.9.0 (devel)
 - Added VPP Status Bar actions: `setStatusBarMode`, `setStatusBar`, and `clearStatusBar`.
 - Added automatic `getStatusBarMode` synchronization after VP connects or reconnects.
