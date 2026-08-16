@@ -17,8 +17,8 @@ Every VPP message MUST contain `protocolVersion`, unique `id`, `type`, `from`, `
   "type": "call",
   "from": "bc",
   "recipient": "vp",
-  "source": { "app": "VoicePrompterModule", "version": "0.9.4", "companionVersion": "dev" },
-  "timestamp": "2026-08-14T00:00:00.000+02:00"
+  "source": { "app": "VoicePrompterModule", "version": "...", "companionVersion": "..." },
+  "timestamp": "2026-08-16T23:25:00.000+02:00"
 }
 ```
 
@@ -48,7 +48,16 @@ Navigation calls SHOULD use `expectsResponse: true`.
 
 ## Status Bar
 
-The Status Bar is a generic display surface controlled through normal VPP messages. Mode is exactly `off`, `top`, or `bottom`. Active zone count is an independent runtime value from 1 through 6 and MUST NOT renumber zones.
+The Status Bar is a generic display surface controlled through normal VPP messages. Mode is exactly `off`, `top`, or `bottom`.
+
+Status Bar state has two distinct authorities:
+
+- **VoicePrompter is authoritative for Status Bar mode** (`off`, `top`, `bottom`).
+- **VPM is authoritative for remote Status Bar zone state**, including the active zone count and the last resolved content/alignment of individual zones.
+
+The VPP protocol does **not** define a maximum number of Status Bar zones. `count` and `index` are positive integers beginning at 1. A particular sender implementation MAY expose a configurable practical/UI limit, but that limit is not part of VPP and MUST NOT be interpreted as a protocol maximum.
+
+VoicePrompter MUST NOT assume a fixed maximum or default operational zone count. The active zone count is supplied by VPM through `setStatusBarZoneCount`. Before that value is supplied for the current remote state/session, VP SHOULD treat the remote active zone count as unknown rather than inventing a default such as 2, 6, or 10.
 
 Zone text is UTF-8/Unicode plain text. Unicode symbols such as `●`, `■`, `▶`, `⏺`, `🔴` or `🟣` are valid. Zone text MUST NOT be interpreted as HTML, JavaScript, CSS, markup, URL, or executable content. Rendering MUST use a plain-text mechanism equivalent to DOM `textContent`; `innerHTML`, `eval`, or equivalent interpretation is forbidden. Each zone text is limited to 1024 Unicode characters; an empty string is valid.
 
@@ -64,9 +73,11 @@ Uses `args: {}` and `expectsResponse: true`. Successful `result` MUST contain ex
 
 VP emits `statusBarModeChanged` whenever the actual shared mode changes, whether locally or through `setStatusBarMode`. `args` contains exactly `mode`.
 
+When VPM receives a valid change from `off` to `top` or `bottom`, it SHOULD replay its current authoritative remote Status Bar snapshot so VP immediately receives the current active zone count and current zone data.
+
 ### setStatusBarZoneCount
 
-Changes only the number of active/rendered zones.
+Changes only the number of active/rendered remote Status Bar zones.
 
 ```json
 {
@@ -78,28 +89,73 @@ Changes only the number of active/rendered zones.
   "method": "setStatusBarZoneCount",
   "args": { "count": 4 },
   "expectsResponse": false,
-  "source": { "app": "VoicePrompterModule", "version": "0.9.4" },
+  "source": { "app": "VoicePrompterModule", "version": "..." },
   "timestamp": "..."
 }
 ```
 
-`count` MUST be an integer from 1 through 6. Changing count does not itself change zone text or alignment. Reducing count does not renumber zones and SHOULD preserve higher-numbered zone state for the current connected session. If mode is `off`, VP MUST discard the update and MUST NOT queue it for later display.
+`count` MUST be a positive integer (`>= 1`). VPP defines no upper bound.
+
+Changing count does not itself change zone text or alignment and MUST NOT renumber zones. VoicePrompter dynamically uses the count supplied by VPM; it MUST NOT clamp the value to a protocol-defined maximum because no such maximum exists.
+
+A receiver that cannot process a particular value because of an implementation/resource limitation MAY reject it with `INVALID_ARGUMENT` when a correlated response is requested. Such an implementation limitation MUST NOT be represented as a VPP-wide maximum.
+
+If mode is `off`, VP MUST discard the remote display update and MUST NOT queue it for later display. VPM remains authoritative for the desired remote state and can replay it when the Status Bar becomes visible.
 
 ### setStatusBarZone
 
-Changes one zone without replacing other zones. `args` MUST contain exactly `index` (integer 1–6), `text` (plain-text string 0–1024 Unicode characters), and `align` (`left`, `center`, or `right`). Empty `text` intentionally empties the zone. A zone may be updated above the active count and remain non-rendered until count includes it. This state is not persistent across reconnects. If mode is `off`, VP MUST discard the update.
+Changes one zone without replacing other zones. `args` MUST contain exactly:
 
-### Set Status Bar aggregate behavior in VPM
+- `index` — positive integer (`>= 1`), with no VPP-defined upper bound;
+- `text` — plain-text string of 0–1024 Unicode characters;
+- `align` — `left`, `center`, or `right`.
 
-`Set Status Bar` is a Companion convenience action, not a separate VPP method. With active count `N`, VPM sends one `setStatusBarZoneCount({"count":N})`, followed by one `setStatusBarZone(...)` for each index 1 through N. Zone groups above N remain stored in the Companion action but are not evaluated or sent.
+Empty `text` intentionally empties the zone. A zone may be updated above the current active count and remain non-rendered until the active count includes it. If mode is `off`, VP MUST discard the update and MUST NOT queue it for later display.
 
-### Legacy setStatusBar
+### VPM authoritative Status Bar snapshot
 
-Earlier development builds used `setStatusBar` to replace a complete zone array. VPM 0.9.4 and later use `setStatusBarZoneCount` and `setStatusBarZone` as canonical methods. Existing `setStatusBar` handling MAY be retained temporarily for compatibility.
+VPM SHOULD maintain the last desired remote Status Bar state as an authoritative snapshot consisting of:
+
+- the active zone count;
+- the last resolved text of each known zone;
+- the alignment of each known zone.
+
+For Companion expressions/variables, the snapshot stores the value that was actually resolved when the corresponding action executed, not the unevaluated expression string.
+
+The snapshot SHOULD survive a temporary VP or VPBridge disconnect. VPM MAY persist the snapshot across a VPM/Companion restart so the remote display can also be restored after a full client restart.
+
+VP is a renderer of this remote state and is not required to preserve the remote zone snapshot across disconnect/restart. Loss of VP state therefore does not change the authoritative VPM snapshot.
+
+### Status Bar synchronization after VP reconnect
+
+After VP connects or reconnects, VPM first obtains the authoritative mode using `getStatusBarMode`.
+
+If the returned mode is `off`, VPM MUST NOT send the zone snapshot because VP intentionally discards remote Status Bar updates while the Status Bar is off. VPM retains its authoritative snapshot locally.
+
+If the returned mode is `top` or `bottom`, VPM SHOULD replay the complete current snapshot in this order:
+
+1. `setStatusBarZoneCount` with the current active zone count;
+2. `setStatusBarZone` for each zone that belongs to the current snapshot and should be restored.
+
+This replay uses the normal existing VPP methods; no separate reconnect/snapshot transport method is required.
+
+The same replay SHOULD occur when VPM receives `statusBarModeChanged` changing the mode from `off` to `top` or `bottom`.
+
+This makes reconnection deterministic: VP does not query or guess the current number/content of zones; VPM proactively restores its authoritative remote state.
+
+### VPM practical/UI zone limit
+
+A VPM implementation MAY provide a user-configurable maximum number of zones for UI/readability purposes. This value limits what that VPM instance allows its actions to address or activate. It does not change VPP semantics and is not transmitted as a protocol capability or protocol maximum.
+
+The current VPM design uses a configurable practical range of **1–10**, with a default of **6**. These values belong to VPM configuration only. VP MUST NOT hard-code them as protocol limits.
+
+If the VPM practical maximum is reduced below the current active zone count, VPM SHOULD reduce its active zone count to the configured maximum. Zone data above the practical maximum MAY remain stored in the VPM snapshot so it is not unnecessarily destroyed and can become usable again if the practical maximum is later increased.
 
 ### clearStatusBar
 
-`clearStatusBar` remains part of protocol version 1 while its practical semantics are evaluated. It uses `args: {}` and clears remote Status Bar data without changing mode.
+`clearStatusBar` remains part of protocol version 1 while its practical semantics are evaluated. It uses `args: {}` and clears remote Status Bar data without changing mode. VPM MUST update its authoritative snapshot consistently when this action is executed so cleared data is not unintentionally restored on reconnect.
+
+There is no aggregate `Set Status Bar` VPP method or required VPM action. Status Bar state is controlled by the atomic `setStatusBarZoneCount` and `setStatusBarZone` operations. Earlier development-only aggregate behavior is intentionally removed and is not part of the current protocol contract.
 
 ## event
 
@@ -171,7 +227,7 @@ VPBridge `reason` MUST be one of:
 
 On receipt of `disconnecting` from `server`, VP and VPM SHOULD immediately enter their server-unavailable/warning state without waiting for heartbeat timeout. Their existing reconnect logic remains active.
 
-When connectivity returns, **no new reconnect event is required**. Existing WebSocket reconnect, server `ping`, mailbox-state discovery, heartbeat interval acquisition, Status Bar synchronization, and other existing initialization mechanisms continue exactly as before.
+When connectivity returns, no new reconnect event is required. Existing WebSocket reconnect, server `ping`, mailbox-state discovery, heartbeat interval acquisition, Status Bar synchronization, and other existing initialization mechanisms continue exactly as before.
 
 ## progress
 
