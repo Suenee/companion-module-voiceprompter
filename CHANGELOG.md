@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.10.0 (devel)
+- Added `Microphone` action with `On`, `Off`, and `Toggle`, using VPP `setMicrophone`.
+- Added `Synchronize Google Doc` action using VPP `syncGoogleDoc`.
+- Added `Set Google Doc URL` action using VPP `setGoogleDocUrl`; Companion variables/expressions are resolved before sending.
+- Google Docs URLs are validated locally as HTTPS `docs.google.com/document/...` URLs.
+- All three new control calls use `expectsResponse: true` so VoicePrompter can return correlated success/error results.
+
 ## 0.9.9 (devel)
 - Fixed marker state being cleared by unrelated VPP traffic such as ping/response messages. `marker_args` and marker `command` now keep the last marker value until a new marker event arrives.
 - Added configurable direct marker argument variables. `Marker argument variables` in module settings selects how many variables are registered, from 0 through 5; default is 5.
