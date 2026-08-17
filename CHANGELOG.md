@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.10.2 (devel)
+- Added `Font Size Adjust` action using VPP `adjustFontSize` with relative integer `delta` values; Companion variables/expressions are supported.
+- VPM accepts adjustments from -80 through +80 px; `0` is a valid no-op. VoicePrompter clamps the effective resulting font size to the existing 20–100 px range.
+- Extended `Rotate Screen` with `Toggle`; the VPP `setRotateScreen` state is now `on`, `off`, or `toggle`.
+- Extended `PROTOCOL.md` with deterministic semantics for both changes.
+
 ## 0.10.1 (devel)
 - Added `Font Size` action using VPP `setFontSize`; VPM resolves variables/expressions and only sends integer values from 20 through 100 px.
 - Added `Voice Commands` action with `On`, `Off`, and `Toggle`, using VPP `setVoiceCommands`.
