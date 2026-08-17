@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.10.1 (devel)
+- Added `Font Size` action using VPP `setFontSize`; VPM resolves variables/expressions and only sends integer values from 20 through 100 px.
+- Added `Voice Commands` action with `On`, `Off`, and `Toggle`, using VPP `setVoiceCommands`.
+- Added `Rotate Screen` action with `On` and `Off`, using VPP `setRotateScreen`.
+- All three new control calls use `expectsResponse: true`.
+- Extended `PROTOCOL.md` with deterministic schemas and semantics for these controls.
+
 ## 0.10.0 (devel)
 - Added `Microphone` action with `On`, `Off`, and `Toggle`, using VPP `setMicrophone`.
 - Added `Synchronize Google Doc` action using VPP `syncGoogleDoc`.
