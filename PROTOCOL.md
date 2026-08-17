@@ -62,30 +62,7 @@ These calls expose existing VoicePrompter user operations to remote VPP control.
 
 ### setMicrophone
 
-Controls the VoicePrompter microphone state.
-
-```json
-{
-  "protocolVersion": 1,
-  "id": "...",
-  "type": "call",
-  "from": "bc",
-  "recipient": "vp",
-  "method": "setMicrophone",
-  "args": { "state": "toggle" },
-  "expectsResponse": true,
-  "source": { "app": "VoicePrompterModule", "version": "..." },
-  "timestamp": "..."
-}
-```
-
-`args` MUST contain exactly one field, `state`, with one of these values:
-
-- `on` — ensure the microphone is on;
-- `off` — ensure the microphone is off;
-- `toggle` — invert the current microphone state.
-
-`on` and `off` are idempotent. VoicePrompter MUST return a terminal `response` after successful application or an `error` if the microphone state cannot be changed.
+Controls the VoicePrompter microphone state. `args` MUST contain exactly `state`: `on`, `off`, or `toggle`. `on` and `off` are idempotent.
 
 ### setFontSize
 
@@ -110,9 +87,9 @@ Sets the VoicePrompter teleprompter font size in CSS pixels.
 
 VPM MAY resolve Companion variables/expressions before validation. If the resolved value is not an integer within 20–100, VPM sends no VPP message.
 
-### setVoiceCommands
+### adjustFontSize
 
-Controls activation of Voice Commands in VoicePrompter.
+Adjusts the current VoicePrompter teleprompter font size relatively.
 
 ```json
 {
@@ -121,21 +98,21 @@ Controls activation of Voice Commands in VoicePrompter.
   "type": "call",
   "from": "bc",
   "recipient": "vp",
-  "method": "setVoiceCommands",
-  "args": { "state": "toggle" },
+  "method": "adjustFontSize",
+  "args": { "delta": -5 },
   "expectsResponse": true,
   "source": { "app": "VoicePrompterModule", "version": "..." },
   "timestamp": "..."
 }
 ```
 
-`args` MUST contain exactly one field, `state`, with value `on`, `off`, or `toggle`.
+`args` MUST contain exactly one field, `delta`, as an integer number of CSS pixels. Positive values increase the current size, negative values decrease it, and `0` means no change. The current VPM UI accepts resolved values from **-80 through +80 px**, corresponding to the full difference between its 20 px minimum and 100 px maximum; values outside that range or non-integers are not sent.
 
-- `on` — ensure Voice Commands are active;
-- `off` — ensure Voice Commands are inactive;
-- `toggle` — invert the current Voice Commands activation state.
+The operation is relative to the font size that VP actually has at the time the call is processed. Because VPM does not need to know that current value, VoicePrompter MUST enforce the effective **20–100 px** range when applying the delta. If the arithmetic result would exceed a boundary, VP MUST clamp the effective result to the nearest boundary (20 or 100 px). Thus `delta: 0` is a valid no-op and still succeeds.
 
-`on` and `off` are idempotent.
+### setVoiceCommands
+
+Controls activation of Voice Commands in VoicePrompter. `args` MUST contain exactly `state`: `on`, `off`, or `toggle`. `on` and `off` are idempotent.
 
 ### setRotateScreen
 
@@ -149,37 +126,24 @@ Controls the VoicePrompter Rotate Screen setting.
   "from": "bc",
   "recipient": "vp",
   "method": "setRotateScreen",
-  "args": { "state": "on" },
+  "args": { "state": "toggle" },
   "expectsResponse": true,
   "source": { "app": "VoicePrompterModule", "version": "..." },
   "timestamp": "..."
 }
 ```
 
-`args` MUST contain exactly one field, `state`, with value `on` or `off`. There is intentionally no `toggle` state for this method. `on` and `off` are idempotent and MUST set the same Rotate Screen state exposed by VoicePrompter locally.
+`args` MUST contain exactly one field, `state`, with value `on`, `off`, or `toggle`.
+
+- `on` — ensure Rotate Screen is active;
+- `off` — ensure Rotate Screen is inactive;
+- `toggle` — invert the current Rotate Screen state.
+
+`on` and `off` are idempotent and MUST operate on the same Rotate Screen state exposed by VoicePrompter locally.
 
 ### syncGoogleDoc
 
-Requests immediate synchronization/reload of the content from the currently configured Google Docs source.
-
-The request uses exactly `args: {}` and `expectsResponse: true`.
-
-```json
-{
-  "protocolVersion": 1,
-  "id": "...",
-  "type": "call",
-  "from": "bc",
-  "recipient": "vp",
-  "method": "syncGoogleDoc",
-  "args": {},
-  "expectsResponse": true,
-  "source": { "app": "VoicePrompterModule", "version": "..." },
-  "timestamp": "..."
-}
-```
-
-VoicePrompter MUST execute the same document synchronization operation available locally. If no usable Google Docs source is configured, synchronization fails, or the document cannot be loaded, VoicePrompter MUST return a correlated `error`. Successful completion returns a correlated `response`.
+Requests immediate synchronization/reload of the content from the currently configured Google Docs source. The request uses exactly `args: {}` and `expectsResponse: true`. VoicePrompter MUST execute the same document synchronization operation available locally. If no usable Google Docs source is configured, synchronization fails, or the document cannot be loaded, VoicePrompter MUST return a correlated `error`. Successful completion returns a correlated `response`.
 
 ### setGoogleDocUrl
 
@@ -237,26 +201,7 @@ When VPM receives a valid change from `off` to `top` or `bottom`, it SHOULD repl
 
 ### setStatusBarZoneCount
 
-Changes only the number of active/rendered remote Status Bar zones.
-
-```json
-{
-  "protocolVersion": 1,
-  "id": "...",
-  "type": "call",
-  "from": "bc",
-  "recipient": "vp",
-  "method": "setStatusBarZoneCount",
-  "args": { "count": 4 },
-  "expectsResponse": false,
-  "source": { "app": "VoicePrompterModule", "version": "..." },
-  "timestamp": "..."
-}
-```
-
-`count` MUST be a positive integer (`>= 1`). VPP defines no upper bound.
-
-Changing count does not itself change zone text or alignment and MUST NOT renumber zones. VoicePrompter dynamically uses the count supplied by VPM; it MUST NOT clamp the value to a protocol-defined maximum because no such maximum exists.
+Changes only the number of active/rendered remote Status Bar zones. `args` contains exactly `count`, a positive integer (`>= 1`). VPP defines no upper bound. Changing count does not itself change zone text or alignment and MUST NOT renumber zones. VoicePrompter dynamically uses the count supplied by VPM; it MUST NOT clamp the value to a protocol-defined maximum because no such maximum exists.
 
 A receiver that cannot process a particular value because of an implementation/resource limitation MAY reject it with `INVALID_ARGUMENT` when a correlated response is requested. Such an implementation limitation MUST NOT be represented as a VPP-wide maximum.
 
@@ -274,34 +219,20 @@ Empty `text` intentionally empties the zone. A zone may be updated above the cur
 
 ### VPM authoritative Status Bar snapshot
 
-VPM SHOULD maintain the last desired remote Status Bar state as an authoritative snapshot consisting of:
+VPM SHOULD maintain the last desired remote Status Bar state as an authoritative snapshot consisting of the active zone count and the last resolved text/alignment of each known zone. For Companion expressions/variables, the snapshot stores the value that was actually resolved when the corresponding action executed, not the unevaluated expression string.
 
-- the active zone count;
-- the last resolved text of each known zone;
-- the alignment of each known zone.
-
-For Companion expressions/variables, the snapshot stores the value that was actually resolved when the corresponding action executed, not the unevaluated expression string.
-
-The snapshot SHOULD survive a temporary VP or VPBridge disconnect. VPM MAY persist the snapshot across a VPM/Companion restart so the remote display can also be restored after a full client restart.
-
-VP is a renderer of this remote state and is not required to preserve the remote zone snapshot across disconnect/restart. Loss of VP state therefore does not change the authoritative VPM snapshot.
+The snapshot SHOULD survive a temporary VP or VPBridge disconnect. VPM MAY persist the snapshot across a VPM/Companion restart so the remote display can also be restored after a full client restart. VP is a renderer of this remote state and is not required to preserve the remote zone snapshot across disconnect/restart.
 
 ### Status Bar synchronization after VP reconnect
 
-After VP connects or reconnects, VPM first obtains the authoritative mode using `getStatusBarMode`.
-
-If the returned mode is `off`, VPM MUST NOT send the zone snapshot because VP intentionally discards remote Status Bar updates while the Status Bar is off. VPM retains its authoritative snapshot locally.
+After VP connects or reconnects, VPM first obtains the authoritative mode using `getStatusBarMode`. If the returned mode is `off`, VPM MUST NOT send the zone snapshot because VP intentionally discards remote Status Bar updates while the Status Bar is off. VPM retains its authoritative snapshot locally.
 
 If the returned mode is `top` or `bottom`, VPM SHOULD replay the complete current snapshot in this order:
 
 1. `setStatusBarZoneCount` with the current active zone count;
 2. `setStatusBarZone` for each zone that belongs to the current snapshot and should be restored.
 
-This replay uses the normal existing VPP methods; no separate reconnect/snapshot transport method is required.
-
-The same replay SHOULD occur when VPM receives `statusBarModeChanged` changing the mode from `off` to `top` or `bottom`.
-
-This makes reconnection deterministic: VP does not query or guess the current number/content of zones; VPM proactively restores its authoritative remote state.
+The same replay SHOULD occur when VPM receives `statusBarModeChanged` changing the mode from `off` to `top` or `bottom`. No separate reconnect/snapshot transport method is required.
 
 ### VPM practical/UI zone limit
 
@@ -315,7 +246,7 @@ If the VPM practical maximum is reduced below the current active zone count, VPM
 
 `clearStatusBar` remains part of protocol version 1 while its practical semantics are evaluated. It uses `args: {}` and clears remote Status Bar data without changing mode. VPM MUST update its authoritative snapshot consistently when this action is executed so cleared data is not unintentionally restored on reconnect.
 
-There is no aggregate `Set Status Bar` VPP method or required VPM action. Status Bar state is controlled by the atomic `setStatusBarZoneCount` and `setStatusBarZone` operations. Earlier development-only aggregate behavior is intentionally removed and is not part of the current protocol contract.
+There is no aggregate `Set Status Bar` VPP method or required VPM action. Status Bar state is controlled by the atomic `setStatusBarZoneCount` and `setStatusBarZone` operations.
 
 ## event
 
@@ -327,65 +258,13 @@ VP emits `marker` when reading crosses a skipped marker. `command` is a non-empt
 
 ### disconnecting event — graceful disconnect
 
-`disconnecting` announces an intentional, graceful departure **before** the sender closes its WebSocket. It allows the receiving side to update connection state immediately instead of waiting for heartbeat timeout.
-
-It is a best-effort event and normally uses `expectsResponse: false`. A sender MUST attempt to send it before closing the socket, but shutdown/restart/exit MUST NOT be blocked indefinitely waiting for delivery or acknowledgement.
+`disconnecting` announces an intentional, graceful departure **before** the sender closes its WebSocket. It allows the receiving side to update connection state immediately instead of waiting for heartbeat timeout. It is a best-effort event and normally uses `expectsResponse: false`.
 
 `disconnecting` does not replace heartbeat/ping. Crashes, network failures, power loss, or any failure where the sender cannot emit the event continue to be detected by heartbeat.
 
-#### VP or VPM intentional disconnect
+For a client-originated intentional disconnect, `reason` is currently `user`. On receipt from the opposite mailbox, VP/VPM SHOULD immediately treat that peer as unavailable and expose the normal warning / bridge-only state. It MUST NOT wait for heartbeat timeout.
 
-VP sends directly through VPBridge to BC/VPM:
-
-```json
-{
-  "protocolVersion": 1,
-  "id": "...",
-  "type": "event",
-  "from": "vp",
-  "recipient": "bc",
-  "event": "disconnecting",
-  "args": { "reason": "user" },
-  "expectsResponse": false,
-  "source": { "app": "VoicePrompter", "version": "..." },
-  "timestamp": "..."
-}
-```
-
-VPM uses the same event with `from: "bc"` and `recipient: "vp"`.
-
-For a client-originated intentional disconnect, `reason` is currently `user`.
-
-On receipt from the opposite mailbox, VP/VPM SHOULD immediately treat that peer as unavailable and expose the normal warning / bridge-only state. It MUST NOT wait for heartbeat timeout. The event is informational; it is not a request to disconnect the recipient.
-
-#### VPBridge graceful shutdown/restart/exit
-
-Before intentionally closing client sockets, VPBridge SHOULD send `disconnecting` independently to every connected mailbox.
-
-```json
-{
-  "protocolVersion": 1,
-  "id": "...",
-  "type": "event",
-  "from": "server",
-  "recipient": "vp",
-  "event": "disconnecting",
-  "args": { "reason": "restart" },
-  "expectsResponse": false,
-  "source": { "app": "VoicePrompterBridge", "version": "..." },
-  "timestamp": "..."
-}
-```
-
-The event to VPM uses `recipient: "bc"` and its own unique `id`.
-
-VPBridge `reason` MUST be one of:
-
-- `shutdown` — bridge/server is intentionally being stopped;
-- `restart` — bridge/server is intentionally restarting;
-- `exit` — VPBridge application is intentionally terminating.
-
-On receipt of `disconnecting` from `server`, VP and VPM SHOULD immediately enter their server-unavailable/warning state without waiting for heartbeat timeout. Their existing reconnect logic remains active.
+Before intentionally closing client sockets, VPBridge SHOULD send `disconnecting` independently to every connected mailbox. VPBridge `reason` MUST be one of `shutdown`, `restart`, or `exit`. On receipt, VP and VPM SHOULD immediately enter their server-unavailable/warning state without waiting for heartbeat timeout. Their existing reconnect logic remains active.
 
 When connectivity returns, no new reconnect event is required. Existing WebSocket reconnect, server `ping`, mailbox-state discovery, heartbeat interval acquisition, Status Bar synchronization, and other existing initialization mechanisms continue exactly as before.
 
@@ -411,9 +290,7 @@ VPBridge is authoritative for heartbeat interval. Default is 30000 ms (30 second
 
 After a full interval without peer traffic, the client sends `ping` to `server`. Clients use a fixed 5000 ms (5 seconds) grace period. With default interval, expected health confirmation may therefore take up to 35000 ms (35 seconds).
 
-A valid ping response with opposite mailbox `connected:false` means bridge alive / peer unavailable. Failure to receive ping response within grace means VPBridge connection is unhealthy and client SHOULD reconnect.
-
-A received `disconnecting` event is authoritative for an intentional departure and permits immediate state update; it does not alter heartbeat rules for unannounced failures.
+A valid ping response with opposite mailbox `connected:false` means bridge alive / peer unavailable. Failure to receive ping response within grace means VPBridge connection is unhealthy and client SHOULD reconnect. A received `disconnecting` event is authoritative for an intentional departure and permits immediate state update.
 
 ## Connection-state interpretation
 
