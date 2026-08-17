@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.10.5 (devel)
+- Grouped Companion action names using functional prefixes so related actions stay together in the action picker/search even though Companion does not provide native action categories.
+- Added prefixes: `Advanced`, `Audio`, `Display`, `Document`, `Navigation`, `Reading`, and `Status Bar`.
+- Moved `Voice Commands` into the `Audio` group together with `Microphone`.
+- Kept existing action IDs unchanged, so saved buttons/actions continue to reference the same VPM actions.
+- No VPP changes were required; this release changes only VPM action presentation/naming.
+
 ## 0.10.4 (devel)
 - Renamed the VPM `Alignment` action to `Text Alignment` and changed its default selection to `Left`.
 - Clarified `Font Size Adjust`: it accepts an integer relative delta (including values from variables/expressions), and VoicePrompter clamps the resulting font size to the same absolute 20–100 px range used by `Font Size`.
