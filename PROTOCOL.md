@@ -106,9 +106,9 @@ Adjusts the current VoicePrompter teleprompter font size relatively.
 }
 ```
 
-`args` MUST contain exactly one field, `delta`, as an integer number of CSS pixels. Positive values increase the current size, negative values decrease it, and `0` means no change. The current VPM UI accepts resolved values from **-80 through +80 px**, corresponding to the full difference between its 20 px minimum and 100 px maximum; values outside that range or non-integers are not sent.
+`args` MUST contain exactly one field, `delta`, as an integer number of CSS pixels. Positive values increase the current size, negative values decrease it, and `0` means no change. VPM MAY resolve Companion variables/expressions before validating that the result is an integer.
 
-The operation is relative to the font size that VP actually has at the time the call is processed. Because VPM does not need to know that current value, VoicePrompter MUST enforce the effective **20–100 px** range when applying the delta. If the arithmetic result would exceed a boundary, VP MUST clamp the effective result to the nearest boundary (20 or 100 px). Thus `delta: 0` is a valid no-op and still succeeds.
+The operation is relative to the font size that VP actually has at the time the call is processed. VoicePrompter MUST enforce the same effective **20–100 px** range used by `setFontSize`. If the arithmetic result would exceed a boundary, VP MUST clamp the effective result to the nearest boundary (20 or 100 px). Therefore a caller may request any integer relative delta; the resulting font size always remains within the absolute 20–100 px range. `delta: 0` is a valid no-op and still succeeds.
 
 ### setVoiceCommands
 
@@ -153,14 +153,14 @@ Controls the VoicePrompter text alignment setting.
   "from": "bc",
   "recipient": "vp",
   "method": "setAlignment",
-  "args": { "align": "center" },
+  "args": { "align": "left" },
   "expectsResponse": true,
   "source": { "app": "VoicePrompterModule", "version": "..." },
   "timestamp": "..."
 }
 ```
 
-`args` MUST contain exactly one field, `align`, with value `left`, `center`, or `right`. The call MUST set the same alignment state exposed by VoicePrompter locally. The operation is idempotent.
+`args` MUST contain exactly one field, `align`, with value `left`, `center`, or `right`. The call MUST set the same alignment state exposed by VoicePrompter locally. The operation is idempotent. VPM currently presents this action as **Text Alignment** and uses `left` as its default UI value; this is a VPM UI default, not a protocol restriction.
 
 ### setMirrorMode
 
@@ -209,6 +209,29 @@ Sets the VoicePrompter Recording Dock opacity as an integer percentage.
 ```
 
 `args` MUST contain exactly one field, `opacity`, as an integer from **30 through 100**, inclusive. VPM MAY resolve Companion variables/expressions before validation. If the resolved value is not an integer within 30–100, VPM SHOULD send no VPP call. VoicePrompter MUST validate the received value and SHOULD reject unsupported values with `INVALID_ARGUMENT` rather than silently applying an unrelated value.
+
+### adjustRecordingDockOpacity
+
+Adjusts the current VoicePrompter Recording Dock opacity relatively.
+
+```json
+{
+  "protocolVersion": 1,
+  "id": "...",
+  "type": "call",
+  "from": "bc",
+  "recipient": "vp",
+  "method": "adjustRecordingDockOpacity",
+  "args": { "delta": -5 },
+  "expectsResponse": true,
+  "source": { "app": "VoicePrompterModule", "version": "..." },
+  "timestamp": "..."
+}
+```
+
+`args` MUST contain exactly one field, `delta`, as an integer number of percentage points. Positive values increase opacity, negative values decrease it, and `0` means no change. VPM MAY resolve Companion variables/expressions before validating that the result is an integer.
+
+The operation is relative to the Recording Dock opacity that VP actually has at the time the call is processed. VoicePrompter MUST enforce the same effective **30–100%** range used by `setRecordingDockOpacity`. If the arithmetic result would exceed a boundary, VP MUST clamp the effective result to the nearest boundary (30 or 100%). Therefore a caller may request any integer relative delta; the resulting opacity always remains within the absolute 30–100% range. `delta: 0` is a valid no-op and still succeeds.
 
 ### syncGoogleDoc
 
