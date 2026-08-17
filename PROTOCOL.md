@@ -18,7 +18,7 @@ Every VPP message MUST contain `protocolVersion`, unique `id`, `type`, `from`, `
   "from": "bc",
   "recipient": "vp",
   "source": { "app": "VoicePrompterModule", "version": "...", "companionVersion": "..." },
-  "timestamp": "2026-08-17T20:11:00.000+02:00"
+  "timestamp": "2026-08-17T22:16:00.000+02:00"
 }
 ```
 
@@ -141,6 +141,75 @@ Controls the VoicePrompter Rotate Screen setting.
 
 `on` and `off` are idempotent and MUST operate on the same Rotate Screen state exposed by VoicePrompter locally.
 
+### setAlignment
+
+Controls the VoicePrompter text alignment setting.
+
+```json
+{
+  "protocolVersion": 1,
+  "id": "...",
+  "type": "call",
+  "from": "bc",
+  "recipient": "vp",
+  "method": "setAlignment",
+  "args": { "align": "center" },
+  "expectsResponse": true,
+  "source": { "app": "VoicePrompterModule", "version": "..." },
+  "timestamp": "..."
+}
+```
+
+`args` MUST contain exactly one field, `align`, with value `left`, `center`, or `right`. The call MUST set the same alignment state exposed by VoicePrompter locally. The operation is idempotent.
+
+### setMirrorMode
+
+Controls the VoicePrompter Mirror Mode setting.
+
+```json
+{
+  "protocolVersion": 1,
+  "id": "...",
+  "type": "call",
+  "from": "bc",
+  "recipient": "vp",
+  "method": "setMirrorMode",
+  "args": { "state": "toggle" },
+  "expectsResponse": true,
+  "source": { "app": "VoicePrompterModule", "version": "..." },
+  "timestamp": "..."
+}
+```
+
+`args` MUST contain exactly one field, `state`, with value `on`, `off`, or `toggle`.
+
+- `on` — ensure Mirror Mode is active;
+- `off` — ensure Mirror Mode is inactive;
+- `toggle` — invert the current Mirror Mode state.
+
+`on` and `off` are idempotent and MUST operate on the same Mirror Mode state exposed by VoicePrompter locally.
+
+### setRecordingDockOpacity
+
+Sets the VoicePrompter Recording Dock opacity as an integer percentage.
+
+```json
+{
+  "protocolVersion": 1,
+  "id": "...",
+  "type": "call",
+  "from": "bc",
+  "recipient": "vp",
+  "method": "setRecordingDockOpacity",
+  "args": { "opacity": 65 },
+  "expectsResponse": true,
+  "source": { "app": "VoicePrompterModule", "version": "..." },
+  "timestamp": "..."
+}
+```
+
+`args` MUST contain exactly one field, `opacity`, as an integer from **30 through 100**, inclusive. VPM MAY resolve Companion variables/expressions before validation. If the resolved value is not an integer within 30–100, VPM SHOULD send no VPP call. VoicePrompter MUST validate the received value and SHOULD reject unsupported values with `INVALID_ARGUMENT` rather than silently applying an unrelated value.
+
 ### syncGoogleDoc
 
 Requests immediate synchronization/reload of the content from the currently configured Google Docs source. The request uses exactly `args: {}` and `expectsResponse: true`. VoicePrompter MUST execute the same document synchronization operation available locally. If no usable Google Docs source is configured, synchronization fails, or the document cannot be loaded, VoicePrompter MUST return a correlated `error`. Successful completion returns a correlated `response`.
@@ -255,6 +324,29 @@ Events report unsolicited events. An event MAY set `expectsResponse: true` when 
 ### marker event
 
 VP emits `marker` when reading crosses a skipped marker. `command` is a non-empty marker command/name and `args` is an ordered JSON array. When `expectsResponse` is true, VPM returns `response` after successful processing or `error` on failure.
+
+### wordChanged event
+
+VoicePrompter emits `wordChanged` when the currently selected/read word changes.
+
+```json
+{
+  "protocolVersion": 1,
+  "id": "...",
+  "type": "event",
+  "from": "vp",
+  "recipient": "bc",
+  "event": "wordChanged",
+  "args": { "word": "Disclosure" },
+  "expectsResponse": false,
+  "source": { "app": "VoicePrompter", "version": "..." },
+  "timestamp": "..."
+}
+```
+
+`args` MUST contain exactly one field, `word`, as a UTF-8/Unicode string. The value represents the word that VP currently considers selected/active/read. An empty string is valid and means that no current word is selected.
+
+VP SHOULD emit this event only when the effective word value changes. The event is high-frequency UI state and SHOULD use `expectsResponse: false`; no acknowledgement is required. VPM SHOULD expose the latest received value as Companion variable `word` (for example `$(vp:word)`) and MUST NOT clear it because of unrelated VPP traffic. The value changes only when a new valid `wordChanged` event is received, including an explicit empty-string value.
 
 ### disconnecting event — graceful disconnect
 
