@@ -18,7 +18,7 @@ Every VPP message MUST contain `protocolVersion`, unique `id`, `type`, `from`, `
   "from": "bc",
   "recipient": "vp",
   "source": { "app": "VoicePrompterModule", "version": "...", "companionVersion": "..." },
-  "timestamp": "2026-08-16T23:25:00.000+02:00"
+  "timestamp": "2026-08-17T19:46:00.000+02:00"
 }
 ```
 
@@ -55,6 +55,85 @@ Navigation calls SHOULD use `expectsResponse: true`.
 - Higher positive offsets continue farther backward by markers.
 
 `offset: 0` is therefore a valid and intentional value and MUST NOT be interpreted as "do nothing" or rejected as an invalid offset.
+
+## VoicePrompter control methods
+
+These calls expose existing VoicePrompter user operations to remote VPP control. They are normal application `call` messages addressed to `vp` and SHOULD use `expectsResponse: true` so the caller receives a correlated success or error result.
+
+### setMicrophone
+
+Controls the VoicePrompter microphone state.
+
+```json
+{
+  "protocolVersion": 1,
+  "id": "...",
+  "type": "call",
+  "from": "bc",
+  "recipient": "vp",
+  "method": "setMicrophone",
+  "args": { "state": "toggle" },
+  "expectsResponse": true,
+  "source": { "app": "VoicePrompterModule", "version": "..." },
+  "timestamp": "..."
+}
+```
+
+`args` MUST contain exactly one field, `state`, with one of these values:
+
+- `on` — ensure the microphone is on;
+- `off` — ensure the microphone is off;
+- `toggle` — invert the current microphone state.
+
+`on` and `off` are idempotent. VoicePrompter MUST return a terminal `response` after successful application or an `error` if the microphone state cannot be changed.
+
+### syncGoogleDoc
+
+Requests immediate synchronization/reload of the content from the currently configured Google Docs source.
+
+The request uses exactly `args: {}` and `expectsResponse: true`.
+
+```json
+{
+  "protocolVersion": 1,
+  "id": "...",
+  "type": "call",
+  "from": "bc",
+  "recipient": "vp",
+  "method": "syncGoogleDoc",
+  "args": {},
+  "expectsResponse": true,
+  "source": { "app": "VoicePrompterModule", "version": "..." },
+  "timestamp": "..."
+}
+```
+
+VoicePrompter MUST execute the same document synchronization operation available locally. If no usable Google Docs source is configured, synchronization fails, or the document cannot be loaded, VoicePrompter MUST return a correlated `error`. Successful completion returns a correlated `response`.
+
+### setGoogleDocUrl
+
+Sets the Google Docs document URL used by VoicePrompter.
+
+```json
+{
+  "protocolVersion": 1,
+  "id": "...",
+  "type": "call",
+  "from": "bc",
+  "recipient": "vp",
+  "method": "setGoogleDocUrl",
+  "args": { "url": "https://docs.google.com/document/d/.../edit" },
+  "expectsResponse": true,
+  "source": { "app": "VoicePrompterModule", "version": "..." },
+  "timestamp": "..."
+}
+```
+
+`args` MUST contain exactly one field, `url`, as a non-empty string. The value MUST represent an absolute HTTPS Google Docs document URL on `docs.google.com` whose path belongs to `/document/...`. The receiving VoicePrompter MUST validate the URL before storing or using it and MUST NOT execute or interpret arbitrary script/content from the URL string.
+
+Setting the URL changes the configured source document URL. It does **not** implicitly require a document synchronization unless VoicePrompter's local behavior for changing that same setting already performs one. To request synchronization deterministically, send `syncGoogleDoc` explicitly after `setGoogleDocUrl` succeeds.
+
+VPM MAY resolve Companion variables/expressions in the URL before sending it. VPM SHOULD reject an invalid resolved URL locally and send no VPP call.
 
 ## Status Bar
 
