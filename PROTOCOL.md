@@ -18,7 +18,7 @@ Every VPP message MUST contain `protocolVersion`, unique `id`, `type`, `from`, `
   "from": "bc",
   "recipient": "vp",
   "source": { "app": "VoicePrompterModule", "version": "...", "companionVersion": "..." },
-  "timestamp": "2026-08-17T19:46:00.000+02:00"
+  "timestamp": "2026-08-17T20:11:00.000+02:00"
 }
 ```
 
@@ -86,6 +86,77 @@ Controls the VoicePrompter microphone state.
 - `toggle` — invert the current microphone state.
 
 `on` and `off` are idempotent. VoicePrompter MUST return a terminal `response` after successful application or an `error` if the microphone state cannot be changed.
+
+### setFontSize
+
+Sets the VoicePrompter teleprompter font size in CSS pixels.
+
+```json
+{
+  "protocolVersion": 1,
+  "id": "...",
+  "type": "call",
+  "from": "bc",
+  "recipient": "vp",
+  "method": "setFontSize",
+  "args": { "size": 50 },
+  "expectsResponse": true,
+  "source": { "app": "VoicePrompterModule", "version": "..." },
+  "timestamp": "..."
+}
+```
+
+`args` MUST contain exactly one field, `size`, as an integer number of pixels. The current VPM implementation limits user input to **20–100 px** and MUST NOT send values outside this range. VoicePrompter currently supports the same range and SHOULD reject unsupported values with `INVALID_ARGUMENT` rather than silently applying an unrelated value.
+
+VPM MAY resolve Companion variables/expressions before validation. If the resolved value is not an integer within 20–100, VPM sends no VPP message.
+
+### setVoiceCommands
+
+Controls activation of Voice Commands in VoicePrompter.
+
+```json
+{
+  "protocolVersion": 1,
+  "id": "...",
+  "type": "call",
+  "from": "bc",
+  "recipient": "vp",
+  "method": "setVoiceCommands",
+  "args": { "state": "toggle" },
+  "expectsResponse": true,
+  "source": { "app": "VoicePrompterModule", "version": "..." },
+  "timestamp": "..."
+}
+```
+
+`args` MUST contain exactly one field, `state`, with value `on`, `off`, or `toggle`.
+
+- `on` — ensure Voice Commands are active;
+- `off` — ensure Voice Commands are inactive;
+- `toggle` — invert the current Voice Commands activation state.
+
+`on` and `off` are idempotent.
+
+### setRotateScreen
+
+Controls the VoicePrompter Rotate Screen setting.
+
+```json
+{
+  "protocolVersion": 1,
+  "id": "...",
+  "type": "call",
+  "from": "bc",
+  "recipient": "vp",
+  "method": "setRotateScreen",
+  "args": { "state": "on" },
+  "expectsResponse": true,
+  "source": { "app": "VoicePrompterModule", "version": "..." },
+  "timestamp": "..."
+}
+```
+
+`args` MUST contain exactly one field, `state`, with value `on` or `off`. There is intentionally no `toggle` state for this method. `on` and `off` are idempotent and MUST set the same Rotate Screen state exposed by VoicePrompter locally.
 
 ### syncGoogleDoc
 
