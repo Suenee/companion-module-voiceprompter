@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.10.4 (devel)
+- Renamed the VPM `Alignment` action to `Text Alignment` and changed its default selection to `Left`.
+- Clarified `Font Size Adjust`: it accepts an integer relative delta (including values from variables/expressions), and VoicePrompter clamps the resulting font size to the same absolute 20–100 px range used by `Font Size`.
+- Added `Recording Dock Opacity Adjust` using VPP `adjustRecordingDockOpacity`; it accepts an integer relative delta in percentage points and VoicePrompter clamps the resulting opacity to the existing 30–100% range.
+- Updated `PROTOCOL.md` with the refined `adjustFontSize` semantics and the new `adjustRecordingDockOpacity` method.
+
 ## 0.10.3 (devel)
 - Added `word` Companion variable, updated from VPP `wordChanged` events. The value keeps the last received word until another `wordChanged` event arrives, so unrelated traffic cannot clear it.
 - Added `Alignment` action using VPP `setAlignment` with `left`, `center`, and `right`.
