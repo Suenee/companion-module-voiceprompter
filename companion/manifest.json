@@ -4,7 +4,7 @@
   "name": "VoicePrompter",
   "shortname": "VoicePrompter",
   "description": "Bridge connection between VoicePrompter and Bitfocus Companion through VoicePrompter Bridge.",
-  "version": "0.10.0",
+  "version": "0.10.1",
   "license": "MIT",
   "repository": "https://github.com/Suenee/companion-module-voiceprompter",
   "bugs": "https://github.com/Suenee/companion-module-voiceprompter/issues",
