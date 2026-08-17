@@ -46,6 +46,16 @@ A message related to a previous message MUST contain `correlationId` equal to th
 
 Navigation calls SHOULD use `expectsResponse: true`.
 
+#### markerBack offset semantics
+
+`markerBack` navigates relative to markers preceding or containing the current reading position.
+
+- `offset: 0` means **the current marker**. VoicePrompter MUST move the reading position immediately below / after that marker, i.e. to the first readable content following the marker. If the reading position is already below that marker, the operation still targets that marker's post-marker reading position rather than the previous marker.
+- `offset: 1` means the previous marker before the current marker.
+- Higher positive offsets continue farther backward by markers.
+
+`offset: 0` is therefore a valid and intentional value and MUST NOT be interpreted as "do nothing" or rejected as an invalid offset.
+
 ## Status Bar
 
 The Status Bar is a generic display surface controlled through normal VPP messages. Mode is exactly `off`, `top`, or `bottom`.
