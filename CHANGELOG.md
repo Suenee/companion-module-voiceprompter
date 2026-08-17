@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.10.3 (devel)
+- Added `word` Companion variable, updated from VPP `wordChanged` events. The value keeps the last received word until another `wordChanged` event arrives, so unrelated traffic cannot clear it.
+- Added `Alignment` action using VPP `setAlignment` with `left`, `center`, and `right`.
+- Added `Mirror Mode` action using VPP `setMirrorMode` with `On`, `Off`, and `Toggle`.
+- Added `Recording Dock Opacity` action using VPP `setRecordingDockOpacity`; variables/expressions are resolved and only whole percentages from 30 through 100 are sent.
+- Changed the default `Marker argument variables` setting from 5 to 1 for new/default configurations; existing saved values remain unchanged.
+
 ## 0.10.2 (devel)
 - Added `Font Size Adjust` action using VPP `adjustFontSize` with relative integer `delta` values; Companion variables/expressions are supported.
 - VPM accepts adjustments from -80 through +80 px; `0` is a valid no-op. VoicePrompter clamps the effective resulting font size to the existing 20–100 px range.
