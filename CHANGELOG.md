@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.11.1 (devel)
+- On VPM/Companion start, Status Bar `activeZoneCount` is initialized from the configured `Maximum Status Bar zones` value (default 6).
+- `Status Bar: Set Zone Count` remains a runtime override, so the active count can be reduced and later restored up to the configured maximum without an initial zone-count action.
+- Status Bar mode still starts unknown; initializing the zone count does not turn an empty/unknown Status Bar state into `off`, `top`, or `bottom`.
+- Updated the `Maximum Status Bar zones` configuration tooltip to document its startup-default role.
+
 ## 0.11.0 (devel)
 - Implemented the current VPP Status Bar authority model: VPM now keeps the latest valid Status Bar state as runtime memory for the lifetime of the running Companion/VPM instance.
 - Status Bar runtime memory starts empty/unknown after a Companion/VPM restart; `off` remains a distinct valid state and no default mode/count is invented.
