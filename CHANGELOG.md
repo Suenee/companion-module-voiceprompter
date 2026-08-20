@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.11.0 (devel)
+- Implemented the current VPP Status Bar authority model: VPM now keeps the latest valid Status Bar state as runtime memory for the lifetime of the running Companion/VPM instance.
+- Status Bar runtime memory starts empty/unknown after a Companion/VPM restart; `off` remains a distinct valid state and no default mode/count is invented.
+- Removed persistence of the Status Bar snapshot from Companion configuration. Legacy `statusBarSnapshot` configuration is discarded during normalization.
+- Status Bar actions now update VPM memory before attempting delivery to VP, so temporary VP/VPBridge unavailability does not lose the latest desired state.
+- `Status Bar: Mode` now also follows write-before-delivery semantics and remains remembered while VP is unavailable.
+- Added handling of VP `statusBarSyncRequest`; VPM returns `available:false` when runtime memory cannot restore a complete state, or replays the current atomic Status Bar state and returns `available:true`.
+- `statusBarModeChanged` updates VPM memory before any zone replay; replay triggered by this event never sends an old mode back to VP.
+- Increasing the active zone count now re-sends already remembered zones that newly enter the active range.
+- `Clear Status Bar` clears remembered zone data while preserving remembered mode and active zone count.
+- Status Bar variables now describe runtime memory rather than a persistent snapshot.
+- Added validation of required VPP envelope fields `source` and `timestamp`.
+- Peer activity/heartbeat is refreshed only after an incoming VP message passes its applicable protocol validation.
+- Updated `upgrade.cmd` with a single self-update stage: it checks the current `devel` copy on GitHub before doing anything else, replaces/restarts itself when different, then continues with the normal upgrade.
+- Kept all existing Companion action IDs unchanged.
+
 ## 0.10.5 (devel)
 - Grouped Companion action names using functional prefixes so related actions stay together in the action picker/search even though Companion does not provide native action categories.
 - Added prefixes: `Advanced`, `Audio`, `Display`, `Document`, `Navigation`, `Reading`, and `Status Bar`.
