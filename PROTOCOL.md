@@ -273,12 +273,14 @@ During one running Companion/VPM session, **VPM is the authoritative memory of t
 The runtime memory consists of:
 
 - `mode` — `off`, `top`, `bottom`, or unknown when no valid value has yet been learned;
-- `activeZoneCount` — a positive integer, or unknown when no valid value has yet been supplied;
+- `activeZoneCount` — a positive integer;
 - zero or more zone records containing the last resolved `text` and `align` for each zone index.
 
-This memory is valid only for the lifetime of the running Companion/VPM instance. Restarting Companion/VPM starts with an empty/unknown Status Bar memory. VPP v1 does not require persistence of this memory across a Companion/VPM restart.
+The current VPM initializes `activeZoneCount` when the module instance starts from its configured **Maximum Status Bar zones** value. Therefore a fresh VPM runtime knows the desired active zone count before any `setStatusBarZoneCount` action is executed. The mode intentionally remains unknown until it is learned from a valid Status Bar operation or bootstrapped by VP during synchronization.
 
-An empty/unknown memory is **not** equivalent to `mode: off`. `off` is a real, valid state. While VPM has no valid state to restore, VP MUST keep the Status Bar in its local `WAITING...` state and MUST NOT invent a default mode, zone count, or zone contents.
+This memory is valid only for the lifetime of the running Companion/VPM instance. Restarting Companion/VPM creates a new runtime memory: `mode` becomes unknown, `activeZoneCount` is initialized again from the current VPM configuration, and remembered zone records start empty. VPP v1 does not require persistence of this memory across a Companion/VPM restart.
+
+An unknown `mode` is **not** equivalent to `mode: off`. `off` is a real, valid state. Until VPM learns or bootstraps a valid mode, it does not yet have a complete authoritative Status Bar state to replay.
 
 VP is still allowed to originate a user change of Status Bar mode while a usable VP↔VPM connection exists. Such a local change is reported through `statusBarModeChanged`; once VPM accepts that event, the received mode immediately becomes the newest authoritative value in VPM memory. VP MUST NOT allow a local Status Bar mode change while VPM is unavailable, because VPM could not learn that newer state.
 
@@ -302,7 +304,7 @@ When the operation originates from VPM, VPM MUST store the requested mode in run
 
 VP emits `statusBarModeChanged` whenever the actual shared mode changes, whether locally or through `setStatusBarMode`. `args` contains exactly `mode`.
 
-On receipt of a valid event, VPM MUST update `memory.mode` **before** any subsequent Status Bar replay or delivery. This ordering prevents a newly selected `top` or `bottom` value from being overwritten by an older mode held in memory.
+On receipt of a valid event, VPM MUST update `memory.mode` **before** any subsequent Status Bar replay or delivery. This event represents an actual newer state change and therefore always replaces the previously remembered mode.
 
 A replay triggered by `statusBarModeChanged` MUST NOT send `setStatusBarMode` back to VP. It may replay only the zone state (`setStatusBarZoneCount` and `setStatusBarZone`) that belongs to the newly accepted mode. This rule prevents feedback loops and stale-mode overwrite.
 
@@ -330,11 +332,34 @@ For Companion variables/expressions, VPM stores the value that was actually reso
 
 ### statusBarSyncRequest event
 
-VP uses `statusBarSyncRequest` to request the latest authoritative Status Bar state after VP starts, reconnects, restarts, or otherwise loses its rendered state while VPM continues running.
+VP uses `statusBarSyncRequest` to request the latest authoritative Status Bar state after VP starts, reconnects, restarts, after VPM itself restarts while VP remains running, or whenever VP otherwise needs its rendered Status Bar state synchronized.
 
-The event is sent from `vp` to `bc`, uses exactly `args: {}`, and MUST set `expectsResponse: true`.
+The event is sent from `vp` to `bc`, MUST set `expectsResponse: true`, and `args` MUST contain exactly one field, `mode`, whose value is `off`, `top`, or `bottom`:
 
-If VPM has no valid Status Bar state to restore, VPM sends the correlated terminal `response`:
+```json
+{
+  "protocolVersion": 1,
+  "id": "...",
+  "type": "event",
+  "from": "vp",
+  "recipient": "bc",
+  "event": "statusBarSyncRequest",
+  "args": { "mode": "off" },
+  "expectsResponse": true,
+  "source": { "app": "VoicePrompter", "version": "..." },
+  "timestamp": "..."
+}
+```
+
+`args.mode` is a **bootstrap hint**, not a request to change the Status Bar mode. VP SHOULD send its actual current local mode with every `statusBarSyncRequest`; VPM decides whether that value is applicable.
+
+VPM MUST apply the bootstrap hint only when `statusBarMemory.mode` is currently unknown/null. In that case VPM stores `args.mode` as the initial authoritative runtime mode before evaluating whether the Status Bar memory is available for replay.
+
+If VPM already knows `statusBarMemory.mode`, it MUST ignore `args.mode` completely for state-authority purposes. The bootstrap hint MUST NOT overwrite an existing remembered mode, even if the local VP value differs. This is what makes reconnect/resync deterministic: once VPM has an authoritative runtime mode, VPM wins during synchronization.
+
+Because the current VPM initializes `activeZoneCount` from configuration at module start, accepting a valid bootstrap mode is sufficient to make a fresh runtime Status Bar memory replayable even when no explicit `setStatusBarZoneCount` action has yet run. An empty `zones` map is a valid state and simply means no zone contents have yet been remembered.
+
+If VPM still cannot form a valid replayable state, VPM sends the correlated terminal `response`:
 
 ```json
 {
@@ -342,7 +367,7 @@ If VPM has no valid Status Bar state to restore, VPM sends the correlated termin
 }
 ```
 
-VP then remains in `WAITING...` and MUST NOT invent a default state.
+VP then remains in `WAITING...` and MUST NOT invent or commit a replacement authoritative state.
 
 If VPM has a valid state, VPM replays the current runtime memory using the existing atomic calls and then terminates the request with:
 
@@ -359,9 +384,9 @@ For a complete visible-state restore, replay order is:
 3. `setStatusBarZone` for every remembered zone that should be available to the current active range;
 4. correlated `response` to the original `statusBarSyncRequest`.
 
-When mode is `off`, the replay may stop after `setStatusBarMode`; zone data stays in VPM memory for a later visible mode.
+When mode is `off`, the replay stops after `setStatusBarMode`; zone count and zone data stay in VPM memory for a later visible mode.
 
-Because VPBridge preserves FIFO ordering within a mailbox route, the correlated `response` is sent only after VPM has queued the replay messages. `available: true` therefore means that VPM possessed a valid authoritative state and issued its restoration sequence; it does not create a second aggregate Status Bar protocol method.
+Because VPBridge preserves FIFO ordering within a mailbox route, the correlated `response` is sent only after VPM has queued the replay messages. `available: true` therefore means that VPM possessed or successfully bootstrapped a valid authoritative state and issued its restoration sequence; it does not create a second aggregate Status Bar protocol method.
 
 ### Synchronization and local mode-change safety
 
@@ -369,15 +394,17 @@ During initial synchronization VP SHOULD treat the Status Bar state as not ready
 
 A local VP mode change MUST NOT be allowed while there is no usable connection to VPM. During a reconnect/initial-sync window, VP SHOULD also avoid committing a local mode change until the pending Status Bar synchronization has completed. This removes ambiguity about whether a local change or a replayed value is newer.
 
-If a valid `statusBarModeChanged` nevertheless arrives while a replay is being prepared, VPM MUST treat the event value as newer: update memory first and MUST NOT subsequently send an older remembered mode from that replay. Implementations MAY cancel/restart the replay or continue only with zone delivery consistent with the new mode.
+The bootstrap `args.mode` carried by `statusBarSyncRequest` MUST NOT be used as a normal state-change mechanism. A real local user change after initialization MUST be reported through `statusBarModeChanged`, which immediately becomes the newest authoritative value in VPM memory.
 
-No revision counter is required by VPP v1 as long as these ordering rules are followed.
+If a valid `statusBarModeChanged` arrives while a replay is being prepared, VPM MUST treat the event value as newer: update memory first and MUST NOT subsequently send an older remembered mode from that replay. Implementations MAY cancel/restart the replay or continue only with zone delivery consistent with the new mode.
+
+No VP-session identifier, first-sync flag, or revision counter is required by VPP v1. The bootstrap rule itself is sufficient: bootstrap mode is accepted only while VPM mode is unknown; after that, synchronization is VPM-authoritative and actual changes use `statusBarModeChanged`.
 
 ### VPM practical/UI zone limit
 
 A VPM implementation MAY provide a user-configurable maximum number of zones for UI/readability purposes. This value limits what that VPM instance allows its actions to address or activate. It does not change VPP semantics and is not transmitted as a protocol capability or protocol maximum.
 
-The current VPM design uses a configurable practical range of **1–10**, with a default of **6**. These values belong to VPM configuration only. VP MUST NOT hard-code them as protocol limits.
+The current VPM design uses a configurable practical range of **1–10**, with a default of **6**. The configured value also initializes `activeZoneCount` whenever that VPM instance starts. These values belong to VPM configuration only. VP MUST NOT hard-code them as protocol limits.
 
 If the VPM practical maximum is reduced below the current active zone count, VPM SHOULD reduce its active zone count to the configured maximum. Zone data above the practical maximum MAY remain stored in VPM runtime memory so it is not unnecessarily destroyed and can become usable again if the practical maximum is later increased.
 
