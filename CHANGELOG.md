@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.11.2 (devel)
+- Updated `statusBarSyncRequest` handling to the current VPP contract: `args` must contain exactly one bootstrap `mode` value (`off`, `top`, or `bottom`).
+- If `statusBarMemory.mode` is still unknown (`null`), VPM accepts the bootstrap mode from VP and stores it as the initial runtime mode before evaluating Status Bar availability.
+- If VPM already knows `statusBarMemory.mode`, the bootstrap mode is ignored and cannot overwrite the authoritative runtime memory.
+- After bootstrap, the existing startup `activeZoneCount` from `Maximum Status Bar zones` makes the Status Bar memory replayable, so VPM can return `available:true` immediately.
+- Existing `statusBarModeChanged`, write-before-delivery, zone replay, reconnect/resync behavior, and Companion action IDs remain unchanged.
+
 ## 0.11.1 (devel)
 - On VPM/Companion start, Status Bar `activeZoneCount` is initialized from the configured `Maximum Status Bar zones` value (default 6).
 - `Status Bar: Set Zone Count` remains a runtime override, so the active count can be reduced and later restored up to the configured maximum without an initial zone-count action.
