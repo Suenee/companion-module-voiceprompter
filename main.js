@@ -2,7 +2,7 @@ import { InstanceBase, InstanceStatus, runEntrypoint } from '@companion-module/b
 import WebSocket from 'ws'
 import { randomBytes } from 'node:crypto'
 
-const MODULE_VERSION = '0.11.1'
+const MODULE_VERSION = '0.11.2'
 const PROTOCOL_VERSION = 1
 const DEFAULT_HOST = '127.0.0.1'
 const DEFAULT_PORT = 8170
@@ -105,7 +105,7 @@ class VoicePrompterInstance extends InstanceBase {
  validateEnvelope(m){if(Number(m.protocolVersion)!==PROTOCOL_VERSION)return'Unsupported protocolVersion';if(typeof m.id!=='string'||!m.id)return'Missing message id';if(typeof m.type!=='string')return'Missing message type';if(!['call','event','progress','response','error'].includes(m.type))return`Unknown message type "${m.type}"`;if(!['vp','server'].includes(m.from))return`Invalid from "${m.from}"`;if(m.recipient!=='bc')return'Message recipient must be "bc"';if(!isObject(m.source))return'Missing or invalid source';if(typeof m.timestamp!=='string'||!m.timestamp.trim())return'Missing or invalid timestamp';return null}
  validateTerminalCorrelation(m){if((m.type==='progress'||m.type==='response')&&(typeof m.correlationId!=='string'||!m.correlationId))return`${m.type} is missing correlationId`;if(m.type==='error'&&m.correlationId!==undefined&&typeof m.correlationId!=='string')return'error correlationId must be a string';return null}
  markValidPeerActivity(m){if(m.from!=='vp')return;this.lastActivityAt=Date.now();this.peerConnected=true;this.updateConnectionStatus()}
- handleStatusBarSyncRequest(m){if(m.from!=='vp'||!isObject(m.args)||Object.keys(m.args).length!==0||m.expectsResponse!==true){if(m.expectsResponse===true)this.sendError(m,'INVALID_MESSAGE','Invalid statusBarSyncRequest event');return false}this.markValidPeerActivity(m);const available=this.isStatusBarMemoryAvailable();if(available)this.replayStatusBarMemory();this.sendAck(m,{available});return true}
+ handleStatusBarSyncRequest(m){if(m.from!=='vp'||!isObject(m.args)||!hasOnlyKeys(m.args,['mode'])||!STATUS_BAR_MODES.has(m.args.mode)||m.expectsResponse!==true){if(m.expectsResponse===true)this.sendError(m,'INVALID_MESSAGE','Invalid statusBarSyncRequest event');return false}this.markValidPeerActivity(m);if(this.statusBarMemory.mode===null)this.updateStatusBarMode(m.args.mode);const available=this.isStatusBarMemoryAvailable();if(available)this.replayStatusBarMemory();this.sendAck(m,{available});return true}
  handleMessage(rawData){const raw=Buffer.isBuffer(rawData)?rawData.toString('utf8'):String(rawData);let m;try{m=JSON.parse(raw)}catch{this.protocolFailure('Received invalid JSON',raw);return}if(!isObject(m)){this.protocolFailure('JSON root must be an object',raw);return}const envErr=this.validateEnvelope(m);if(envErr){this.protocolFailure(envErr,raw);return}const corrErr=this.validateTerminalCorrelation(m);if(corrErr){this.protocolFailure(corrErr,raw);return}
   if(this.pendingPingId&&m.from==='server'&&m.correlationId===this.pendingPingId&&(m.type==='response'||m.type==='error')){if(this.heartbeatTimeout){clearTimeout(this.heartbeatTimeout);this.heartbeatTimeout=null}this.pendingPingId=null;this.lastActivityAt=Date.now();if(m.type==='response')this.applyPingResponse(m)}
   let argOffset='',eventAckHandled=false,isPeerDisconnecting=false
