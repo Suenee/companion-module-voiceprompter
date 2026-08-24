@@ -495,6 +495,26 @@ Clients SHOULD expose:
 - **bridge-only / warning** — VPBridge healthy but opposite mailbox unavailable, including an announced peer `disconnecting`;
 - **disconnected / server unavailable** — VPBridge unhealthy, server `disconnecting` received, or server ping timed out.
 
+## Mailbox queue storage and TTL
+
+Mailbox queue storage is a transport/server configuration of VPBridge/SUB, not an application action and not a manifest property. Each mailbox MAY be configured with exactly one queue mode, `OFF`, `MEMORY`, or `PERSISTENT`, and a TTL in whole seconds.
+
+`OFF` means that if the recipient is unavailable, an otherwise routable application message is discarded immediately and no undelivered message is stored.
+
+`MEMORY` means that undelivered messages are retained only in RAM and are subject to TTL. Restarting VPBridge/SUB destroys the in-memory queue.
+
+`PERSISTENT` means that undelivered messages are retained in persistent storage such as SQLite and are subject to the same TTL. Restarting VPBridge/SUB preserves queued messages that have not expired.
+
+TTL is absolute from the instant VPBridge/SUB first accepts the message. The server MUST record an acceptance time equivalent to `receivedAt`; for finite TTL it MAY persist an absolute `expiresAt`. Restarting VPBridge/SUB MUST NOT reset, extend, pause, or otherwise restart TTL.
+
+For `PERSISTENT` queues, startup recovery MUST immediately remove messages whose TTL expired while the server was stopped before attempting normal delivery. A message whose expiration time is less than or equal to the current time is expired and MUST NOT be delivered.
+
+`TTL: 0` means no time-based expiration. In `MEMORY` mode such a message can remain queued until delivery or server restart. In `PERSISTENT` mode it can remain queued across restarts until delivery or explicit queue removal. In `OFF` mode TTL is irrelevant because undelivered messages are not stored.
+
+Queue mode/TTL and per-message queue policy are independent. Queue mode decides whether and where an undelivered message is retained; message policy decides how retained messages relate to other retained messages. If a newer message replaces an older queued message, the newer message keeps its own original `receivedAt` and its own TTL; it does not inherit the older message's age or expiration time.
+
+System `ping` calls addressed to `server` are consumed immediately by the server and are not application-mailbox backlog items governed by these mailbox queue settings.
+
 ## VPBridge transport rule
 
 VPBridge authenticates according to transport configuration, accepts complete syntactically valid JSON, verifies routing envelope fields, routes `vp`/`bc` messages unchanged according to FIFO/buffer rules, consumes `server` messages locally, maintains mailbox connection state, and rejects invalid JSON diagnostically.
