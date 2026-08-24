@@ -264,9 +264,134 @@ If the requested URL differs from the currently configured URL, VP stores the ne
 
 When `expectsResponse: true`, VP MUST return a correlated successful `response` only after both the URL-setting step (when needed) and the synchronization have completed successfully. If URL validation fails, VP MUST return an error and MUST NOT start synchronization. If the URL is valid but the subsequent synchronization fails, VP MUST return a correlated `error` for the `setGoogleDocUrl` request; the fact that the URL may already have been stored does not turn the overall operation into a success.
 
+If VP has its local feature for remembering/persisting the last valid Google Docs URL enabled, a successful `setGoogleDocUrl` synchronization MUST update that persistent last-valid-URL value to the successfully loaded requested URL. This persistence update MUST happen only after the document has been loaded successfully; successful URL syntax validation or storing the configured URL alone is not sufficient. If synchronization fails, the previously persisted last valid URL MUST remain unchanged. If the requested URL is already the current configured URL, a successful synchronization still confirms that URL as the last valid URL and MAY rewrite the same persistent value. If VP has local last-valid-URL persistence disabled, `setGoogleDocUrl` MUST NOT create, update, clear, or otherwise modify that persistent value. VPP does not remotely enable or disable this local persistence setting.
+
 The standalone `syncGoogleDoc` method remains available for explicitly synchronizing the already configured document without supplying a URL. Callers MUST NOT need to send a second `syncGoogleDoc` after a successful `setGoogleDocUrl`, because synchronization is part of `setGoogleDocUrl` itself.
 
 VPM MAY resolve Companion variables/expressions in the URL before sending it. VPM SHOULD reject an invalid resolved URL locally and send no VPP call.
+
+## Synchronized settings and feedback
+
+VPP supports deterministic synchronization of user-visible settings so a remote controller can expose the actual state as variables/feedback rather than merely remember what it requested. This mechanism applies only to settings explicitly declared by the application contract. It does not make arbitrary names or values valid.
+
+For the current VoicePrompter contract the synchronized settings are exactly:
+
+- `microphone` — string enum `on` or `off`;
+- `voiceCommands` — string enum `on` or `off`;
+- `fontSize` — integer in the effective VoicePrompter font-size range;
+- `textAlignment` — string enum `left`, `center`, or `right`;
+- `mirrorMode` — string enum `on` or `off`;
+- `rotateScreen` — string enum `on` or `off`;
+- `recordingDockOpacity` — integer in the effective VoicePrompter opacity range;
+- `googleDocUrl` — string containing the currently configured Google Docs URL; an empty string is valid when no URL is configured.
+
+Navigation state, `syncGoogleDoc`, raw/diagnostic JSON actions, marker data, `wordChanged`, and Status Bar zone/mode state are not part of this general settings mechanism. Status Bar keeps its dedicated authority and synchronization model defined below.
+
+### Result of a setting-changing call
+
+A successful call that changes one synchronized setting MUST return the actual effective value applied by the receiver. The terminal `response.result` MUST contain exactly `setting` and `value` for that setting:
+
+```json
+{
+  "type": "response",
+  "correlationId": "...",
+  "result": {
+    "setting": "microphone",
+    "value": "on"
+  }
+}
+```
+
+The value is the effective state after the operation, not merely the requested argument. This rule is mandatory for idempotent operations, `toggle`, relative adjustments, clamping, normalization, or any other case where the requested input is not itself sufficient to know the final state.
+
+The current VoicePrompter method-to-setting mapping is deterministic:
+
+- `setMicrophone` → `microphone`;
+- `setVoiceCommands` → `voiceCommands`;
+- `setFontSize` and `adjustFontSize` → `fontSize`;
+- `setAlignment` → `textAlignment`;
+- `setMirrorMode` → `mirrorMode`;
+- `setRotateScreen` → `rotateScreen`;
+- `setRecordingDockOpacity` and `adjustRecordingDockOpacity` → `recordingDockOpacity`;
+- `setGoogleDocUrl` → `googleDocUrl`.
+
+For example, if the current font size is 95 px and `adjustFontSize` requests `delta: 20`, VoicePrompter clamps the result to 100 px and returns `result: { "setting": "fontSize", "value": 100 }`.
+
+A receiver MUST NOT return `toggle`, a requested delta, an unclamped requested value, or another command token as the setting feedback value. If the operation fails, it returns the normal correlated `error` and the remote side MUST NOT infer that the requested value became effective.
+
+A remote implementation such as VPM/SUM SHOULD update its corresponding variable/feedback immediately from a valid successful response.
+
+### settingChanged event
+
+VoicePrompter emits `settingChanged` whenever the effective value of a synchronized setting changes independently of the remote controller, including a local user change or another local application path.
+
+```json
+{
+  "protocolVersion": 1,
+  "id": "...",
+  "type": "event",
+  "from": "vp",
+  "recipient": "bc",
+  "event": "settingChanged",
+  "args": {
+    "setting": "fontSize",
+    "value": 72
+  },
+  "expectsResponse": false,
+  "source": { "app": "VoicePrompter", "version": "..." },
+  "timestamp": "..."
+}
+```
+
+`args` MUST contain exactly `setting` and `value`. `setting` MUST be one of the synchronized setting names declared above and `value` MUST match that setting's declared type and value constraints. Unknown setting names, additional arguments, or type-invalid values MUST NOT be silently accepted.
+
+A remote implementation MUST treat a valid `settingChanged` value as the current effective state and update its corresponding variable/feedback. The event normally uses `expectsResponse: false`.
+
+When a remote setting-changing call itself causes the effective value to change, the correlated response is sufficient to confirm the result. VoicePrompter MAY additionally emit the same `settingChanged` event for consistency with its local change notification path; receivers MUST tolerate this duplicate delivery because both messages carry the same effective state. If an idempotent call produces no effective change, no `settingChanged` event is required, but the correlated response MUST still return the actual current value.
+
+### getSettingsSnapshot
+
+`getSettingsSnapshot` provides deterministic initialization/reconnect synchronization of all synchronized settings without requiring one query per setting. It is a public VoicePrompter `call`, uses exactly `args: {}`, and MUST use `expectsResponse: true`.
+
+```json
+{
+  "protocolVersion": 1,
+  "id": "...",
+  "type": "call",
+  "from": "bc",
+  "recipient": "vp",
+  "method": "getSettingsSnapshot",
+  "args": {},
+  "expectsResponse": true,
+  "source": { "app": "VoicePrompterModule", "version": "..." },
+  "timestamp": "..."
+}
+```
+
+A successful response contains exactly one `settings` object inside `result`. For the current VoicePrompter contract that object contains all synchronized setting names exactly once and their current effective values:
+
+```json
+{
+  "type": "response",
+  "correlationId": "...",
+  "result": {
+    "settings": {
+      "microphone": "off",
+      "voiceCommands": "on",
+      "fontSize": 72,
+      "textAlignment": "center",
+      "mirrorMode": "off",
+      "rotateScreen": "off",
+      "recordingDockOpacity": 80,
+      "googleDocUrl": "https://docs.google.com/document/d/.../edit"
+    }
+  }
+}
+```
+
+The snapshot reports actual current values; it does not request or modify settings. VPM/SUM SHOULD request it after the usable VP connection is established or re-established and MUST replace its synchronized setting variables/feedback from the returned snapshot. A partial snapshot, an unknown setting, a missing required setting, or an invalid value is a protocol error and MUST NOT be silently treated as a complete synchronized state.
+
+The settings snapshot is independent of Status Bar synchronization. `getSettingsSnapshot` MUST NOT modify or replay Status Bar runtime memory, and `statusBarSyncRequest` MUST NOT be used as a settings snapshot substitute.
 
 ## Status Bar
 
@@ -469,11 +594,60 @@ When connectivity returns, no new reconnect event is required. Existing WebSocke
 
 ## response
 
-`response` is the terminal successful response to a request. `correlationId` MUST equal the original message's `id`. A simple acknowledgement MAY use `result: { "success": true }`.
+`response` is the terminal successful response to a request. `correlationId` MUST equal the original message's `id`. A simple acknowledgement MAY use `result: { "success": true }` only for requests whose specific method/event contract does not define a more specific result. Setting-changing calls and `getSettingsSnapshot` use the deterministic result schemas defined above.
 
 ## error
 
-`error` is the terminal unsuccessful response. Recommended common codes include `INVALID_MESSAGE`, `INVALID_ROUTING`, `UNKNOWN_METHOD`, `UNKNOWN_ARGUMENT`, `INVALID_ARGUMENT`, `COMMAND_FAILED`, `UNSUPPORTED_PROTOCOL`, and `TIMEOUT`.
+`error` is the terminal unsuccessful response. Recommended common codes include `INVALID_MESSAGE`, `INVALID_ROUTING`, `UNKNOWN_METHOD`, `UNKNOWN_ARGUMENT`, `INVALID_ARGUMENT`, `COMMAND_FAILED`, `SUPERSEDED`, `UNSUPPORTED_PROTOCOL`, and `TIMEOUT`.
+
+## Buffered queue policy
+
+When a destination mailbox is unavailable, VPBridge/SUB MAY retain application messages in that mailbox queue subject to its configured TTL. VPP distinguishes two queue policies for such **stored, not-yet-delivered** application messages: `fifo` and `replace`.
+
+Queue behavior is expressed as transport metadata in the VPP envelope:
+
+```json
+{
+  "queue": {
+    "policy": "fifo"
+  }
+}
+```
+
+or:
+
+```json
+{
+  "queue": {
+    "policy": "replace",
+    "key": "fontSize"
+  }
+}
+```
+
+`queue.policy` is exactly `fifo` or `replace`. For `replace`, `queue.key` is required and MUST be a non-empty stable application-defined string. For `fifo`, `queue.key` MUST be absent. Queue metadata does not change the application method/event arguments and MUST NOT be interpreted by the receiving application as part of `args`.
+
+For backward compatibility, an application message without `queue` metadata is transported as `fifo`. However, a machine-readable application manifest that declares actions for SUM MUST explicitly declare the queue policy for every action that can generate buffered application traffic; the manifest MUST NOT rely on the legacy default. A `replace` action MUST also declare its stable replacement key. SUM copies that declaration into the outgoing VPP envelope. SUB MUST NOT infer queue policy from method names, arguments, or application-specific knowledge.
+
+### `fifo`
+
+`fifo` preserves every stored message and its order. Repeated instructions remain distinct operations. This policy is required whenever repetition or ordering has semantic meaning, including relative adjustments and navigation-like commands. For example, three stored `goNext` calls remain three calls; three stored `adjustFontSize(+5)` calls remain three relative adjustments.
+
+### `replace` — last write wins while queued
+
+`replace` means that only the newest still-undelivered message for the same replacement identity needs to remain in the destination queue. When a new `replace` message is stored, SUB searches only the same origin route, same destination mailbox/target, and same `queue.key`. Any older **still queued and not yet delivered** replace message with that identity is superseded and removed, and the new message becomes the queued value.
+
+A `replace` operation MUST NOT retract, cancel, or rewrite a message that has already been delivered to the recipient. Replacement is strictly a queue-storage optimization for unavailable recipients. With fan-out/multiple targets, replacement is evaluated independently for each target queue.
+
+The newly stored replacement message has its own enqueue time and its own TTL. Replacing an older message MUST NOT inherit the older message's remaining TTL.
+
+The replacement key represents the resulting state, not necessarily the method name. Different absolute actions MAY deliberately share one key if they represent alternative ways to set the same state. Relative/imperative operations MUST NOT share such a replace key merely because they affect the same underlying value.
+
+Examples of suitable semantics are an absolute `setFontSize` or `setMicrophone` state update. By contrast `adjustFontSize`, `adjustRecordingDockOpacity`, `goNext`, `goBack`, `markerNext`, `markerBack`, and other operations where each invocation contributes independently use `fifo`.
+
+If a stored `replace` message with `expectsResponse: true` is superseded before delivery, the transport MUST NOT leave the original request silently pending. SUB SHOULD generate a correlated terminal `error` back to the original sender with error code `SUPERSEDED` when that sender is routable. The superseded message MUST never later be delivered to the original target. This transport error does not imply that the application command failed at the target; it means that command was intentionally not delivered because a newer queued state replaced it.
+
+System `ping` calls addressed to `server` are outside this mechanism. They are immediate transport-health operations and MUST NOT be buffered, coalesced, or replaced as application queue traffic.
 
 ## Server ping
 
@@ -517,9 +691,9 @@ System `ping` calls addressed to `server` are consumed immediately by the server
 
 ## VPBridge transport rule
 
-VPBridge authenticates according to transport configuration, accepts complete syntactically valid JSON, verifies routing envelope fields, routes `vp`/`bc` messages unchanged according to FIFO/buffer rules, consumes `server` messages locally, maintains mailbox connection state, and rejects invalid JSON diagnostically.
+VPBridge authenticates according to transport configuration, accepts complete syntactically valid JSON, verifies routing envelope fields, routes `vp`/`bc` messages unchanged according to FIFO/buffer rules including the generic `queue` metadata defined above, consumes `server` messages locally, maintains mailbox connection state, and rejects invalid JSON diagnostically.
 
-Except for routing, explicit server methods, and its own graceful-shutdown `disconnecting` event, VPBridge SHALL NOT interpret application-level methods, marker commands, Status Bar data, application arguments, results, progress data, or application errors.
+Except for routing, explicit server methods, generic queue-policy enforcement, and its own graceful-shutdown `disconnecting` event, VPBridge SHALL NOT interpret application-level methods, marker commands, Status Bar data, application arguments, results, progress data, or application errors.
 
 ## Compatibility
 
