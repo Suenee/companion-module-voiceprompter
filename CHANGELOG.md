@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.12.0 (devel)
+- Refactored the Companion implementation from VoicePrompter Module (VPM) into the generic Socket Universe Module (SUM) runtime while preserving the existing Companion module id for compatibility.
+- Added the first declarative profile at `manifest/voiceprompter.json`. VoicePrompter-specific action definitions, variable definitions, synchronized settings, runtime-memory declarations, event schemas, replay definitions, presets, manifest-specific configuration fields, and queue policies now live in the manifest rather than being hard-coded as the application contract in `main.js`.
+- Added `Manifest` as the first module configuration field. Available choices are `None` and installed manifests; SUM does not connect or start application communication when `None` is selected.
+- Preserved all existing VoicePrompter action IDs and the `vp` Companion variable namespace so existing buttons/presets remain compatible after the VoicePrompter manifest is selected.
+- Preserved VPP v1 routing compatibility (`bc` to `vp`) and the existing external `source.app` value `VoicePrompterModule` for the VoicePrompter manifest, so current VP/VPB/SUB peers do not need protocol-specific changes for this internal refactor.
+- Implemented the latest VPP synchronized-settings feedback contract: `settingChanged`, actual applied values returned in setting-changing responses, and `getSettingsSnapshot` initialization/reconnect synchronization now update Companion variables `microphone`, `voice_commands`, `font_size`, `text_alignment`, `mirror_mode`, `rotate_screen`, `recording_dock_opacity`, and `google_doc_url`.
+- Added manifest-declared VPP queue policies. Repeated imperative/relative actions use `fifo`; absolute state actions use `replace`; toggle variants remain `fifo`; indexed Status Bar zone replacement keys are generated per zone.
+- Kept Status Bar write-before-delivery runtime memory, bootstrap synchronization, zone replay, dynamic marker variables, heartbeat/ping, API key, reconnect, graceful disconnect, correlation, raw JSON diagnostics, and existing navigation behavior.
+- Renamed the visible Companion module surface to `Socket Universe Module` / `Socket Universe`, while retaining repository and module compatibility identifiers needed by the current installation workflow.
+- Updated `upgrade.cmd` branding to SUM while retaining exactly one self-update stage before normal devel upgrade work.
+
 ## 0.11.2 (devel)
 - Updated `statusBarSyncRequest` handling to the current VPP contract: `args` must contain exactly one bootstrap `mode` value (`off`, `top`, or `bottom`).
 - If `statusBarMemory.mode` is still unknown (`null`), VPM accepts the bootstrap mode from VP and stores it as the initial runtime mode before evaluating Status Bar availability.
