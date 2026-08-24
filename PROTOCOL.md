@@ -270,6 +270,129 @@ The standalone `syncGoogleDoc` method remains available for explicitly synchroni
 
 VPM MAY resolve Companion variables/expressions in the URL before sending it. VPM SHOULD reject an invalid resolved URL locally and send no VPP call.
 
+## Synchronized settings and feedback
+
+VPP supports deterministic synchronization of user-visible settings so a remote controller can expose the actual state as variables/feedback rather than merely remember what it requested. This mechanism applies only to settings explicitly declared by the application contract. It does not make arbitrary names or values valid.
+
+For the current VoicePrompter contract the synchronized settings are exactly:
+
+- `microphone` — string enum `on` or `off`;
+- `voiceCommands` — string enum `on` or `off`;
+- `fontSize` — integer in the effective VoicePrompter font-size range;
+- `textAlignment` — string enum `left`, `center`, or `right`;
+- `mirrorMode` — string enum `on` or `off`;
+- `rotateScreen` — string enum `on` or `off`;
+- `recordingDockOpacity` — integer in the effective VoicePrompter opacity range;
+- `googleDocUrl` — string containing the currently configured Google Docs URL; an empty string is valid when no URL is configured.
+
+Navigation state, `syncGoogleDoc`, raw/diagnostic JSON actions, marker data, `wordChanged`, and Status Bar zone/mode state are not part of this general settings mechanism. Status Bar keeps its dedicated authority and synchronization model defined below.
+
+### Result of a setting-changing call
+
+A successful call that changes one synchronized setting MUST return the actual effective value applied by the receiver. The terminal `response.result` MUST contain exactly `setting` and `value` for that setting:
+
+```json
+{
+  "type": "response",
+  "correlationId": "...",
+  "result": {
+    "setting": "microphone",
+    "value": "on"
+  }
+}
+```
+
+The value is the effective state after the operation, not merely the requested argument. This rule is mandatory for idempotent operations, `toggle`, relative adjustments, clamping, normalization, or any other case where the requested input is not itself sufficient to know the final state.
+
+The current VoicePrompter method-to-setting mapping is deterministic:
+
+- `setMicrophone` → `microphone`;
+- `setVoiceCommands` → `voiceCommands`;
+- `setFontSize` and `adjustFontSize` → `fontSize`;
+- `setAlignment` → `textAlignment`;
+- `setMirrorMode` → `mirrorMode`;
+- `setRotateScreen` → `rotateScreen`;
+- `setRecordingDockOpacity` and `adjustRecordingDockOpacity` → `recordingDockOpacity`;
+- `setGoogleDocUrl` → `googleDocUrl`.
+
+For example, if the current font size is 95 px and `adjustFontSize` requests `delta: 20`, VoicePrompter clamps the result to 100 px and returns `result: { "setting": "fontSize", "value": 100 }`.
+
+A receiver MUST NOT return `toggle`, a requested delta, an unclamped requested value, or another command token as the setting feedback value. If the operation fails, it returns the normal correlated `error` and the remote side MUST NOT infer that the requested value became effective.
+
+A remote implementation such as VPM/SUM SHOULD update its corresponding variable/feedback immediately from a valid successful response.
+
+### settingChanged event
+
+VoicePrompter emits `settingChanged` whenever the effective value of a synchronized setting changes independently of the remote controller, including a local user change or another local application path.
+
+```json
+{
+  "protocolVersion": 1,
+  "id": "...",
+  "type": "event",
+  "from": "vp",
+  "recipient": "bc",
+  "event": "settingChanged",
+  "args": {
+    "setting": "fontSize",
+    "value": 72
+  },
+  "expectsResponse": false,
+  "source": { "app": "VoicePrompter", "version": "..." },
+  "timestamp": "..."
+}
+```
+
+`args` MUST contain exactly `setting` and `value`. `setting` MUST be one of the synchronized setting names declared above and `value` MUST match that setting's declared type and value constraints. Unknown setting names, additional arguments, or type-invalid values MUST NOT be silently accepted.
+
+A remote implementation MUST treat a valid `settingChanged` value as the current effective state and update its corresponding variable/feedback. The event normally uses `expectsResponse: false`.
+
+When a remote setting-changing call itself causes the effective value to change, the correlated response is sufficient to confirm the result. VoicePrompter MAY additionally emit the same `settingChanged` event for consistency with its local change notification path; receivers MUST tolerate this duplicate delivery because both messages carry the same effective state. If an idempotent call produces no effective change, no `settingChanged` event is required, but the correlated response MUST still return the actual current value.
+
+### getSettingsSnapshot
+
+`getSettingsSnapshot` provides deterministic initialization/reconnect synchronization of all synchronized settings without requiring one query per setting. It is a public VoicePrompter `call`, uses exactly `args: {}`, and MUST use `expectsResponse: true`.
+
+```json
+{
+  "protocolVersion": 1,
+  "id": "...",
+  "type": "call",
+  "from": "bc",
+  "recipient": "vp",
+  "method": "getSettingsSnapshot",
+  "args": {},
+  "expectsResponse": true,
+  "source": { "app": "VoicePrompterModule", "version": "..." },
+  "timestamp": "..."
+}
+```
+
+A successful response contains exactly one `settings` object inside `result`. For the current VoicePrompter contract that object contains all synchronized setting names exactly once and their current effective values:
+
+```json
+{
+  "type": "response",
+  "correlationId": "...",
+  "result": {
+    "settings": {
+      "microphone": "off",
+      "voiceCommands": "on",
+      "fontSize": 72,
+      "textAlignment": "center",
+      "mirrorMode": "off",
+      "rotateScreen": "off",
+      "recordingDockOpacity": 80,
+      "googleDocUrl": "https://docs.google.com/document/d/.../edit"
+    }
+  }
+}
+```
+
+The snapshot reports actual current values; it does not request or modify settings. VPM/SUM SHOULD request it after the usable VP connection is established or re-established and MUST replace its synchronized setting variables/feedback from the returned snapshot. A partial snapshot, an unknown setting, a missing required setting, or an invalid value is a protocol error and MUST NOT be silently treated as a complete synchronized state.
+
+The settings snapshot is independent of Status Bar synchronization. `getSettingsSnapshot` MUST NOT modify or replay Status Bar runtime memory, and `statusBarSyncRequest` MUST NOT be used as a settings snapshot substitute.
+
 ## Status Bar
 
 The Status Bar is a generic display surface controlled through normal VPP messages. Mode is exactly `off`, `top`, or `bottom`.
@@ -471,7 +594,7 @@ When connectivity returns, no new reconnect event is required. Existing WebSocke
 
 ## response
 
-`response` is the terminal successful response to a request. `correlationId` MUST equal the original message's `id`. A simple acknowledgement MAY use `result: { "success": true }`.
+`response` is the terminal successful response to a request. `correlationId` MUST equal the original message's `id`. A simple acknowledgement MAY use `result: { "success": true }` only for requests whose specific method/event contract does not define a more specific result. Setting-changing calls and `getSettingsSnapshot` use the deterministic result schemas defined above.
 
 ## error
 
