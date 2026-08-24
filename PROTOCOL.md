@@ -239,7 +239,7 @@ Requests immediate synchronization/reload of the content from the currently conf
 
 ### setGoogleDocUrl
 
-Sets the Google Docs document URL used by VoicePrompter.
+Sets the Google Docs document URL used by VoicePrompter and immediately synchronizes/reloads that document.
 
 ```json
 {
@@ -258,7 +258,13 @@ Sets the Google Docs document URL used by VoicePrompter.
 
 `args` MUST contain exactly one field, `url`, as a non-empty string. The value MUST represent an absolute HTTPS Google Docs document URL on `docs.google.com` whose path belongs to `/document/...`. The receiving VoicePrompter MUST validate the URL before storing or using it and MUST NOT execute or interpret arbitrary script/content from the URL string.
 
-Setting the URL changes the configured source document URL. It does **not** implicitly require a document synchronization unless VoicePrompter's local behavior for changing that same setting already performs one. To request synchronization deterministically, send `syncGoogleDoc` explicitly after `setGoogleDocUrl` succeeds.
+A valid `setGoogleDocUrl` call is an atomic user operation with the semantic **set URL, then synchronize**. VoicePrompter MUST ensure the requested URL is the configured source URL and MUST then execute the same document synchronization/reload operation used by `syncGoogleDoc` before returning the terminal result.
+
+If the requested URL differs from the currently configured URL, VP stores the new URL and then synchronizes the newly selected document. If the requested URL is already the current configured URL, VP MUST NOT treat the call as a no-op: it may skip rewriting the unchanged setting, but it MUST still perform the document synchronization/reload.
+
+When `expectsResponse: true`, VP MUST return a correlated successful `response` only after both the URL-setting step (when needed) and the synchronization have completed successfully. If URL validation fails, VP MUST return an error and MUST NOT start synchronization. If the URL is valid but the subsequent synchronization fails, VP MUST return a correlated `error` for the `setGoogleDocUrl` request; the fact that the URL may already have been stored does not turn the overall operation into a success.
+
+The standalone `syncGoogleDoc` method remains available for explicitly synchronizing the already configured document without supplying a URL. Callers MUST NOT need to send a second `syncGoogleDoc` after a successful `setGoogleDocUrl`, because synchronization is part of `setGoogleDocUrl` itself.
 
 VPM MAY resolve Companion variables/expressions in the URL before sending it. VPM SHOULD reject an invalid resolved URL locally and send no VPP call.
 
