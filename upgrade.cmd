@@ -5,10 +5,10 @@ cd /d "%~dp0"
 set "REPO_URL=https://github.com/Suenee/companion-module-voiceprompter.git"
 set "BRANCH=devel"
 set "SELF_URL=https://raw.githubusercontent.com/Suenee/companion-module-voiceprompter/devel/upgrade.cmd"
-set "SELF_TMP=%TEMP%\vpm-upgrade-%RANDOM%-%RANDOM%.cmd"
+set "SELF_TMP=%TEMP%\sum-upgrade-%RANDOM%-%RANDOM%.cmd"
 
 echo ============================================
-echo VoicePrompter Module - GitHub DEVEL upgrade
+echo Socket Universe Module - GitHub DEVEL upgrade
 echo ============================================
 echo.
 
@@ -97,6 +97,7 @@ echo ============================================
 echo DEVEL UPGRADE COMPLETED SUCCESSFULLY
 echo ============================================
 echo Companion developer module should reload automatically.
+echo IMPORTANT: Select a manifest in the module configuration. SUM does not connect with Manifest=None.
 exit /b 0
 
 :fail
