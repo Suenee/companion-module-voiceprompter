@@ -598,7 +598,56 @@ When connectivity returns, no new reconnect event is required. Existing WebSocke
 
 ## error
 
-`error` is the terminal unsuccessful response. Recommended common codes include `INVALID_MESSAGE`, `INVALID_ROUTING`, `UNKNOWN_METHOD`, `UNKNOWN_ARGUMENT`, `INVALID_ARGUMENT`, `COMMAND_FAILED`, `UNSUPPORTED_PROTOCOL`, and `TIMEOUT`.
+`error` is the terminal unsuccessful response. Recommended common codes include `INVALID_MESSAGE`, `INVALID_ROUTING`, `UNKNOWN_METHOD`, `UNKNOWN_ARGUMENT`, `INVALID_ARGUMENT`, `COMMAND_FAILED`, `SUPERSEDED`, `UNSUPPORTED_PROTOCOL`, and `TIMEOUT`.
+
+## Buffered queue policy
+
+When a destination mailbox is unavailable, VPBridge/SUB MAY retain application messages in that mailbox queue subject to its configured TTL. VPP distinguishes two queue policies for such **stored, not-yet-delivered** application messages: `fifo` and `replace`.
+
+Queue behavior is expressed as transport metadata in the VPP envelope:
+
+```json
+{
+  "queue": {
+    "policy": "fifo"
+  }
+}
+```
+
+or:
+
+```json
+{
+  "queue": {
+    "policy": "replace",
+    "key": "fontSize"
+  }
+}
+```
+
+`queue.policy` is exactly `fifo` or `replace`. For `replace`, `queue.key` is required and MUST be a non-empty stable application-defined string. For `fifo`, `queue.key` MUST be absent. Queue metadata does not change the application method/event arguments and MUST NOT be interpreted by the receiving application as part of `args`.
+
+For backward compatibility, an application message without `queue` metadata is transported as `fifo`. However, a machine-readable application manifest that declares actions for SUM MUST explicitly declare the queue policy for every action that can generate buffered application traffic; the manifest MUST NOT rely on the legacy default. A `replace` action MUST also declare its stable replacement key. SUM copies that declaration into the outgoing VPP envelope. SUB MUST NOT infer queue policy from method names, arguments, or application-specific knowledge.
+
+### `fifo`
+
+`fifo` preserves every stored message and its order. Repeated instructions remain distinct operations. This policy is required whenever repetition or ordering has semantic meaning, including relative adjustments and navigation-like commands. For example, three stored `goNext` calls remain three calls; three stored `adjustFontSize(+5)` calls remain three relative adjustments.
+
+### `replace` — last write wins while queued
+
+`replace` means that only the newest still-undelivered message for the same replacement identity needs to remain in the destination queue. When a new `replace` message is stored, SUB searches only the same origin route, same destination mailbox/target, and same `queue.key`. Any older **still queued and not yet delivered** replace message with that identity is superseded and removed, and the new message becomes the queued value.
+
+A `replace` operation MUST NOT retract, cancel, or rewrite a message that has already been delivered to the recipient. Replacement is strictly a queue-storage optimization for unavailable recipients. With fan-out/multiple targets, replacement is evaluated independently for each target queue.
+
+The newly stored replacement message has its own enqueue time and its own TTL. Replacing an older message MUST NOT inherit the older message's remaining TTL.
+
+The replacement key represents the resulting state, not necessarily the method name. Different absolute actions MAY deliberately share one key if they represent alternative ways to set the same state. Relative/imperative operations MUST NOT share such a replace key merely because they affect the same underlying value.
+
+Examples of suitable semantics are an absolute `setFontSize` or `setMicrophone` state update. By contrast `adjustFontSize`, `adjustRecordingDockOpacity`, `goNext`, `goBack`, `markerNext`, `markerBack`, and other operations where each invocation contributes independently use `fifo`.
+
+If a stored `replace` message with `expectsResponse: true` is superseded before delivery, the transport MUST NOT leave the original request silently pending. SUB SHOULD generate a correlated terminal `error` back to the original sender with error code `SUPERSEDED` when that sender is routable. The superseded message MUST never later be delivered to the original target. This transport error does not imply that the application command failed at the target; it means that command was intentionally not delivered because a newer queued state replaced it.
+
+System `ping` calls addressed to `server` are outside this mechanism. They are immediate transport-health operations and MUST NOT be buffered, coalesced, or replaced as application queue traffic.
 
 ## Server ping
 
@@ -622,9 +671,9 @@ Clients SHOULD expose:
 
 ## VPBridge transport rule
 
-VPBridge authenticates according to transport configuration, accepts complete syntactically valid JSON, verifies routing envelope fields, routes `vp`/`bc` messages unchanged according to FIFO/buffer rules, consumes `server` messages locally, maintains mailbox connection state, and rejects invalid JSON diagnostically.
+VPBridge authenticates according to transport configuration, accepts complete syntactically valid JSON, verifies routing envelope fields, routes `vp`/`bc` messages unchanged according to FIFO/buffer rules including the generic `queue` metadata defined above, consumes `server` messages locally, maintains mailbox connection state, and rejects invalid JSON diagnostically.
 
-Except for routing, explicit server methods, and its own graceful-shutdown `disconnecting` event, VPBridge SHALL NOT interpret application-level methods, marker commands, Status Bar data, application arguments, results, progress data, or application errors.
+Except for routing, explicit server methods, generic queue-policy enforcement, and its own graceful-shutdown `disconnecting` event, VPBridge SHALL NOT interpret application-level methods, marker commands, Status Bar data, application arguments, results, progress data, or application errors.
 
 ## Compatibility
 
