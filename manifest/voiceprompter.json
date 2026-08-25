@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "voiceprompter",
   "name": "VoicePrompter",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "VoicePrompter control and synchronization profile for Socket Universe Module.",
   "vppVersion": 1,
   "namespace": "vp",
@@ -76,6 +76,7 @@
     { "id": "status_bar_snapshot", "name": "Status Bar runtime memory JSON", "initial": "{}" },
     { "id": "microphone", "name": "Microphone state (on/off)", "initial": "" },
     { "id": "voice_commands", "name": "Voice Commands state (on/off)", "initial": "" },
+    { "id": "navigation_controls", "name": "Navigation Controls state (on/off)", "initial": "" },
     { "id": "font_size", "name": "Font size (px)", "initial": "" },
     { "id": "text_alignment", "name": "Text alignment (left/center/right)", "initial": "" },
     { "id": "mirror_mode", "name": "Mirror Mode state (on/off)", "initial": "" },
@@ -96,6 +97,7 @@
     "values": {
       "microphone": { "variableId": "microphone", "type": "enum", "values": ["on", "off"] },
       "voiceCommands": { "variableId": "voice_commands", "type": "enum", "values": ["on", "off"] },
+      "navigationControls": { "variableId": "navigation_controls", "type": "enum", "values": ["on", "off"] },
       "fontSize": { "variableId": "font_size", "type": "integer", "min": 20, "max": 100 },
       "textAlignment": { "variableId": "text_alignment", "type": "enum", "values": ["left", "center", "right"] },
       "mirrorMode": { "variableId": "mirror_mode", "type": "enum", "values": ["on", "off"] },
@@ -234,6 +236,16 @@
           ]
         },
         { "type": "textinput", "id": "offset", "label": "Offset", "default": "1", "useVariables": true, "multiline": true, "arg": "offset", "parse": "integer", "visibleForMethodArg": "offset" }
+      ]
+    },
+    "navigation_controls": {
+      "name": "Navigation: Controls",
+      "operation": "call",
+      "method": "setNavigationControls",
+      "expectsResponse": true,
+      "queueByOption": { "option": "state", "fifoValues": ["toggle"], "replaceKey": "navigationControls" },
+      "options": [
+        { "type": "dropdown", "id": "state", "label": "State", "default": "toggle", "arg": "state", "parse": "enum", "values": ["on", "off", "toggle"], "choices": [{"id":"on","label":"On"},{"id":"off","label":"Off"},{"id":"toggle","label":"Toggle"}] }
       ]
     },
     "microphone": {
