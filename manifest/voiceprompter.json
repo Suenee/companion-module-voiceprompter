@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "voiceprompter",
   "name": "VoicePrompter",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "VoicePrompter control and synchronization profile for Socket Universe Module.",
   "vppVersion": 1,
   "namespace": "vp",
@@ -233,7 +233,7 @@
             { "id": "GO_FINISH", "label": "Go Finish" }
           ]
         },
-        { "type": "textinput", "id": "offset", "label": "Offset", "default": "1", "useVariables": true, "multiline": true, "parse": "integer", "visibleForMethodArg": "offset" }
+        { "type": "textinput", "id": "offset", "label": "Offset", "default": "1", "useVariables": true, "multiline": true, "arg": "offset", "parse": "integer", "visibleForMethodArg": "offset" }
       ]
     },
     "microphone": {
