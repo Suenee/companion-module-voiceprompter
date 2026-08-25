@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.12.2 (devel)
+- Added VoicePrompter `Navigation: Controls` action using VPP `setNavigationControls` with `on`, `off`, and `toggle` states.
+- Added synchronized Companion variable `navigation_controls`, updated from setting-changing responses, `settingChanged`, and `getSettingsSnapshot` as `navigationControls`.
+- The VoicePrompter manifest declares `on`/`off` as replaceable state updates under replacement key `navigationControls`; `toggle` remains FIFO because repeated toggles are cumulative.
+- Updated the VoicePrompter manifest to version 1.1.0 and kept VPP at protocol version 1.
+- Updated `PROTOCOL.md` with deterministic `setNavigationControls` semantics and inclusion in synchronized settings/snapshot feedback.
+
 ## 0.12.1 (devel)
 - Fixed the VoicePrompter manifest navigation action so `offset` is mapped into VPP `args.offset` for `markerBack`, `goBack`, `goCurrent`, `goNext`, and `markerNext`.
 - `goStart` and `goFinish` remain argument-free, preserving the existing VPP navigation contract.
