@@ -114,6 +114,16 @@ The operation is relative to the font size that VP actually has at the time the 
 
 Controls activation of Voice Commands in VoicePrompter. `args` MUST contain exactly `state`: `on`, `off`, or `toggle`. `on` and `off` are idempotent.
 
+### setNavigationControls
+
+Controls visibility of the VoicePrompter Navigation Controls / navigation buttons. `args` MUST contain exactly `state`: `on`, `off`, or `toggle`.
+
+- `on` — ensure Navigation Controls are visible;
+- `off` — ensure Navigation Controls are hidden;
+- `toggle` — invert the current Navigation Controls visibility.
+
+`on` and `off` are idempotent and MUST operate on the same Navigation Controls state exposed by VoicePrompter locally. When `expectsResponse: true`, the successful response follows the synchronized-setting result contract below and reports the actual resulting `navigationControls` value as `on` or `off`.
+
 ### setRotateScreen
 
 Controls the VoicePrompter Rotate Screen setting.
@@ -278,6 +288,7 @@ For the current VoicePrompter contract the synchronized settings are exactly:
 
 - `microphone` — string enum `on` or `off`;
 - `voiceCommands` — string enum `on` or `off`;
+- `navigationControls` — string enum `on` or `off`;
 - `fontSize` — integer in the effective VoicePrompter font-size range;
 - `textAlignment` — string enum `left`, `center`, or `right`;
 - `mirrorMode` — string enum `on` or `off`;
@@ -285,7 +296,7 @@ For the current VoicePrompter contract the synchronized settings are exactly:
 - `recordingDockOpacity` — integer in the effective VoicePrompter opacity range;
 - `googleDocUrl` — string containing the currently configured Google Docs URL; an empty string is valid when no URL is configured.
 
-Navigation state, `syncGoogleDoc`, raw/diagnostic JSON actions, marker data, `wordChanged`, and Status Bar zone/mode state are not part of this general settings mechanism. Status Bar keeps its dedicated authority and synchronization model defined below.
+Navigation position/commands, `syncGoogleDoc`, raw/diagnostic JSON actions, marker data, `wordChanged`, and Status Bar zone/mode state are not part of this general settings mechanism. The `navigationControls` setting refers only to visibility of the Navigation Controls UI, not the current navigation position. Status Bar keeps its dedicated authority and synchronization model defined below.
 
 ### Result of a setting-changing call
 
@@ -308,6 +319,7 @@ The current VoicePrompter method-to-setting mapping is deterministic:
 
 - `setMicrophone` → `microphone`;
 - `setVoiceCommands` → `voiceCommands`;
+- `setNavigationControls` → `navigationControls`;
 - `setFontSize` and `adjustFontSize` → `fontSize`;
 - `setAlignment` → `textAlignment`;
 - `setMirrorMode` → `mirrorMode`;
@@ -378,6 +390,7 @@ A successful response contains exactly one `settings` object inside `result`. Fo
     "settings": {
       "microphone": "off",
       "voiceCommands": "on",
+      "navigationControls": "on",
       "fontSize": 72,
       "textAlignment": "center",
       "mirrorMode": "off",
@@ -643,7 +656,7 @@ The newly stored replacement message has its own enqueue time and its own TTL. R
 
 The replacement key represents the resulting state, not necessarily the method name. Different absolute actions MAY deliberately share one key if they represent alternative ways to set the same state. Relative/imperative operations MUST NOT share such a replace key merely because they affect the same underlying value.
 
-Examples of suitable semantics are an absolute `setFontSize` or `setMicrophone` state update. By contrast `adjustFontSize`, `adjustRecordingDockOpacity`, `goNext`, `goBack`, `markerNext`, `markerBack`, and other operations where each invocation contributes independently use `fifo`.
+Examples of suitable semantics are an absolute `setFontSize`, `setMicrophone`, or `setNavigationControls` state update. By contrast `adjustFontSize`, `adjustRecordingDockOpacity`, `goNext`, `goBack`, `markerNext`, `markerBack`, and other operations where each invocation contributes independently use `fifo`. For an action with `on` / `off` / `toggle`, explicit `on` and `off` states are suitable for `replace`, while `toggle` remains `fifo` because repeated toggles have cumulative meaning.
 
 If a stored `replace` message with `expectsResponse: true` is superseded before delivery, the transport MUST NOT leave the original request silently pending. SUB SHOULD generate a correlated terminal `error` back to the original sender with error code `SUPERSEDED` when that sender is routable. The superseded message MUST never later be delivered to the original target. This transport error does not imply that the application command failed at the target; it means that command was intentionally not delivered because a newer queued state replaced it.
 
