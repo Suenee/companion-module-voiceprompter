@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.12.1 (devel)
+- Fixed the VoicePrompter manifest navigation action so `offset` is mapped into VPP `args.offset` for `markerBack`, `goBack`, `goCurrent`, `goNext`, and `markerNext`.
+- `goStart` and `goFinish` remain argument-free, preserving the existing VPP navigation contract.
+- Bumped the VoicePrompter manifest version to 1.0.1.
+
 ## 0.12.0 (devel)
 - Refactored the Companion implementation from VoicePrompter Module (VPM) into the generic Socket Universe Module (SUM) runtime while preserving the existing Companion module id for compatibility.
 - Added the first declarative profile at `manifest/voiceprompter.json`. VoicePrompter-specific action definitions, variable definitions, synchronized settings, runtime-memory declarations, event schemas, replay definitions, presets, manifest-specific configuration fields, and queue policies now live in the manifest rather than being hard-coded as the application contract in `main.js`.
@@ -82,7 +87,7 @@
 - All three new control calls use `expectsResponse: true` so VoicePrompter can return correlated success/error results.
 
 ## 0.9.9 (devel)
-- Fixed marker state being cleared by unrelated VPP traffic such as ping/response messages. `marker_args` and marker `command` now keep the last marker value until a new marker event arrives.
+- Fixed marker state being cleared by unrelated VPP traffic such as ping/response messages. `marker_args` and marker `command` now keep the last marker value until another marker event arrives.
 - Added configurable direct marker argument variables. `Marker argument variables` in module settings selects how many variables are registered, from 0 through 5; default is 5.
 - Direct variables are zero-based: `marker_arg0`, `marker_arg1`, `marker_arg2`, `marker_arg3`, `marker_arg4`.
 - On each marker event, registered direct argument variables are updated from the marker args array. Missing positions are cleared so stale arguments cannot leak from the previous marker.
