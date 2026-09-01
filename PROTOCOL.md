@@ -599,7 +599,9 @@ VP SHOULD emit this event only when the effective word value changes. The event 
 
 For a client-originated intentional disconnect, `reason` is currently `user`. On receipt from the opposite mailbox, VP/VPM SHOULD immediately treat that peer as unavailable and expose the normal warning / bridge-only state. It MUST NOT wait for heartbeat timeout.
 
-Before intentionally closing client sockets, VPBridge SHOULD send `disconnecting` independently to every connected mailbox. VPBridge `reason` MUST be one of `shutdown`, `restart`, or `exit`. On receipt, VP and VPM SHOULD immediately enter their server-unavailable/warning state without waiting for heartbeat timeout. Their existing reconnect logic remains active.
+Before intentionally closing client sockets because VPBridge/SUB itself is stopping, VPBridge SHOULD send `disconnecting` independently to every connected mailbox. In that case VPBridge `reason` MUST be one of `shutdown`, `restart`, or `exit`. On receipt, VP and VPM SHOULD immediately enter their server-unavailable/warning state without waiting for heartbeat timeout. Their existing reconnect logic remains active.
+
+When SUB removes an admitted client session because another authenticated client explicitly selected that session through the connection-admission mechanism defined below, SUB MUST first send that removed client a `disconnecting` event with `reason: "replaced"` and then close that session's WebSocket. `replaced` means only that this particular admitted mailbox session was displaced to free connection capacity. It does not prohibit that client from reconnecting later; any subsequent reconnect is a new admission attempt and follows the same normal connection-admission rules.
 
 When connectivity returns, no new reconnect event is required. Existing WebSocket reconnect, server `ping`, mailbox-state discovery, heartbeat interval acquisition, Status Bar synchronization, and other existing initialization mechanisms continue exactly as before.
 
@@ -668,6 +670,153 @@ System `ping` calls addressed to `server` are outside this mechanism. They are i
 
 `ping` is a system `call` handled by VPBridge. It verifies bridge connection and obtains mailbox state and heartbeat policy. It MUST use caller mailbox as `from`, `recipient: "server"`, `method: "ping"`, `args: {}`, and `expectsResponse: true`. VPBridge consumes it locally and MUST NOT forward it.
 
+## Mailbox connection admission and session management
+
+Mailbox connection limits and session admission are generic SUB transport mechanisms. They are not VoicePrompter application methods and MUST NOT require SUB to understand application-specific behavior.
+
+Each mailbox MUST have a transport configuration value `maxConnections`, defined as a positive integer (`>= 1`) representing the maximum number of simultaneously admitted WebSocket client sessions for that mailbox. A WebSocket that has authenticated but is still waiting for admission does not count toward `maxConnections` and MUST NOT receive or send normal application-mailbox traffic until admitted.
+
+### Client connection registration
+
+After successful transport authentication and before normal mailbox admission, a client MUST identify its connection to SUB with a server `call` named `registerConnection`. The call uses the authenticated mailbox as `from`, `recipient: "server"`, `expectsResponse: true`, and `args` containing exactly:
+
+- `hostname` — non-empty UTF-8/Unicode string identifying the client host;
+- `service` — non-empty UTF-8/Unicode string identifying the connecting service/application.
+
+Example:
+
+```json
+{
+  "protocolVersion": 1,
+  "id": "...",
+  "type": "call",
+  "from": "bc",
+  "recipient": "server",
+  "method": "registerConnection",
+  "args": {
+    "hostname": "STUDIO-PC",
+    "service": "Socket Universe Module"
+  },
+  "expectsResponse": true,
+  "source": { "app": "Socket Universe Module", "version": "..." },
+  "timestamp": "..."
+}
+```
+
+SUB MUST create and retain one session record for the connection. The session record contains exactly the transport/session fields:
+
+- `sessionId` — unique non-empty server-generated identifier for this WebSocket session;
+- `mailbox` — the authenticated mailbox name;
+- `hostname` — the value declared by the client in `registerConnection`;
+- `service` — the value declared by the client in `registerConnection`;
+- `ip` — the remote IP address observed by SUB for the actual connection; the client does not supply this field;
+- `connectedAt` — server-generated connection/admission timestamp in ISO 8601 format; the client does not supply this field.
+
+`sessionId`, `ip`, and `connectedAt` are authoritative SUB-generated metadata. The `hostname` and `service` fields are descriptive client-declared metadata and MUST NOT be used as authorization credentials.
+
+If the mailbox has available capacity, SUB admits the session and returns a correlated `response` whose `result` contains exactly:
+
+```json
+{
+  "status": "admitted",
+  "maxConnections": 2,
+  "currentConnections": 1,
+  "session": {
+    "sessionId": "019...",
+    "mailbox": "bc",
+    "hostname": "STUDIO-PC",
+    "service": "Socket Universe Module",
+    "ip": "192.168.1.25",
+    "connectedAt": "2026-09-01T11:34:27.123+02:00"
+  }
+}
+```
+
+`currentConnections` is the number of admitted sessions in that mailbox after admission, including the newly admitted session.
+
+If admitting the new session would exceed `maxConnections`, SUB MUST keep the authenticated WebSocket in a pending-admission state and return a correlated successful `response` whose `result` contains exactly:
+
+```json
+{
+  "status": "connectionLimit",
+  "maxConnections": 1,
+  "currentConnections": 1,
+  "connections": [
+    {
+      "sessionId": "019...",
+      "mailbox": "bc",
+      "hostname": "STUDIO-PC",
+      "service": "Socket Universe Module",
+      "ip": "192.168.1.25",
+      "connectedAt": "2026-09-01T10:41:12.382+02:00"
+    }
+  ]
+}
+```
+
+`connections` MUST contain all currently admitted sessions in the same mailbox and MUST NOT expose sessions from another mailbox. While pending admission, the client MUST NOT send or receive normal application traffic for that mailbox. SUB MAY accept only server-level transport calls required for health/admission management, including `ping` and `disconnectConnections`.
+
+A `connectionLimit` result is not an application error. It reports that authentication succeeded but mailbox capacity is currently exhausted so the client can decide whether to remain unadmitted, close its connection, or request removal of one or more existing sessions.
+
+### disconnectConnections
+
+A client in pending admission MAY request that SUB disconnect one or more currently admitted sessions from the same mailbox by sending a server `call` named `disconnectConnections`. The method MUST use `recipient: "server"`, `expectsResponse: true`, and `args` containing exactly one field:
+
+- `sessionIds` — a non-empty JSON array of unique non-empty session ID strings.
+
+Example:
+
+```json
+{
+  "protocolVersion": 1,
+  "id": "...",
+  "type": "call",
+  "from": "bc",
+  "recipient": "server",
+  "method": "disconnectConnections",
+  "args": {
+    "sessionIds": ["019...", "019..."]
+  },
+  "expectsResponse": true,
+  "source": { "app": "Socket Universe Module", "version": "..." },
+  "timestamp": "..."
+}
+```
+
+SUB MUST permit this method only for an authenticated connection that is currently pending admission because the same mailbox is at its connection limit. Every requested `sessionId` MUST refer to an admitted session of that same mailbox. A session in another mailbox MUST never be disconnected by this mechanism. Invalid argument shape, duplicate IDs, or a session ID known to belong to another mailbox MUST be rejected with `INVALID_ARGUMENT`.
+
+For each requested session that is still admitted when the operation is processed, SUB MUST first send that client `disconnecting` with `reason: "replaced"`, then close its WebSocket and remove it from the admitted-session set. If a requested session disappeared naturally between the connection list response and processing of `disconnectConnections`, that ID is reported as `notFound` rather than causing the whole operation to fail.
+
+Removal and subsequent capacity evaluation MUST be serialized/atomic with respect to mailbox admission so concurrent replacement requests cannot over-admit the mailbox. After processing the requested removals, SUB MUST immediately re-evaluate the pending caller against the current `maxConnections` value.
+
+If capacity is now available, the pending caller becomes admitted automatically; no second admission call is required. If capacity is still exhausted, the caller remains pending and receives the updated admitted-session list.
+
+The correlated `response.result` contains exactly:
+
+```json
+{
+  "status": "admitted",
+  "disconnected": ["019..."],
+  "notFound": [],
+  "maxConnections": 1,
+  "currentConnections": 1,
+  "connections": [
+    {
+      "sessionId": "020...",
+      "mailbox": "bc",
+      "hostname": "NEW-PC",
+      "service": "Socket Universe Module",
+      "ip": "192.168.1.30",
+      "connectedAt": "2026-09-01T11:40:00.000+02:00"
+    }
+  ]
+}
+```
+
+`status` is exactly `admitted` or `connectionLimit`. `disconnected` lists the requested sessions actually disconnected by this call. `notFound` lists requested same-mailbox sessions that had already disappeared before processing. `currentConnections` and `connections` describe the admitted set after the operation; when `status: "admitted"`, the newly admitted caller is included. When `status: "connectionLimit"`, the caller itself is not included because it remains pending.
+
+A client displaced with `reason: "replaced"` MAY subsequently reconnect. Such a reconnect is a completely new authenticated connection and repeats `registerConnection` and the same admission process; VPP does not impose a special reconnect prohibition or priority rule for previously displaced clients.
+
 ## Heartbeat / idle health check
 
 VPBridge is authoritative for heartbeat interval. Default is 30000 ms (30 seconds). VP and VPM obtain it after establishing/re-establishing their WebSocket connection. Normal valid opposite-mailbox traffic is proof of life.
@@ -706,9 +855,9 @@ System `ping` calls addressed to `server` are consumed immediately by the server
 
 ## VPBridge transport rule
 
-VPBridge authenticates according to transport configuration, accepts complete syntactically valid JSON, verifies routing envelope fields, routes `vp`/`bc` messages unchanged according to FIFO/buffer rules including the generic `queue` metadata defined above, consumes `server` messages locally, maintains mailbox connection state, and rejects invalid JSON diagnostically.
+VPBridge authenticates according to transport configuration, performs generic connection registration/admission and same-mailbox session replacement as defined above, accepts complete syntactically valid JSON, verifies routing envelope fields, routes `vp`/`bc` messages unchanged according to FIFO/buffer rules including the generic `queue` metadata defined above, consumes `server` messages locally, maintains mailbox connection state, and rejects invalid JSON diagnostically.
 
-Except for routing, explicit server methods, generic queue-policy enforcement, and its own graceful-shutdown `disconnecting` event, VPBridge SHALL NOT interpret application-level methods, marker commands, Status Bar data, application arguments, results, progress data, or application errors.
+Except for routing, explicit server methods, generic connection admission/session management, generic queue-policy enforcement, and its own transport `disconnecting` events, VPBridge SHALL NOT interpret application-level methods, marker commands, Status Bar data, application arguments, results, progress data, or application errors.
 
 ## Compatibility
 
