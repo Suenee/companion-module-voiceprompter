@@ -8,7 +8,7 @@ $ProgressPreference = 'SilentlyContinue'
 
 $RepoUrl = 'https://github.com/Suenee/companion-module-voiceprompter.git'
 $Branch = 'devel'
-$UpdaterRevision = '4'
+$UpdaterRevision = '5'
 $RepoDir = [System.IO.Path]::GetFullPath($RepoDir).TrimEnd('\')
 $LogDir = Join-Path $RepoDir 'logs'
 $LogFile = Join-Path $LogDir 'upgrade.log'
@@ -104,7 +104,6 @@ try {
         if (-not (Get-Command git -ErrorAction SilentlyContinue)) { Fail 'Git for Windows is not installed or git.exe is not in PATH. For a fresh installation run install.cmd.' }
         Write-Log ("Git: " + ((& git --version) -join ' '))
 
-        # Process-scoped safe.directory exception for this exact repository only.
         $env:GIT_CONFIG_COUNT = '1'
         $env:GIT_CONFIG_KEY_0 = 'safe.directory'
         $env:GIT_CONFIG_VALUE_0 = $RepoDir.Replace('\', '/')
@@ -115,26 +114,32 @@ try {
         $startCommit = Get-GitText @('rev-parse', 'HEAD')
         Write-Log "Starting commit: $startCommit"
 
-        # A missing upgrade.ps1 is expected on pre-runner revisions. Probe without
-        # inheriting ErrorActionPreference=Stop from native stderr output.
-        $legacyProbe = & git cat-file -e 'HEAD:upgrade.ps1' 2>$null
-        $legacyUpdaterTree = ($LASTEXITCODE -ne 0)
-
         Invoke-Native git @('remote', 'set-url', 'origin', $RepoUrl) | Out-Null
         Invoke-Native git @('fetch', 'origin', $Branch) | Out-Null
 
         $dirty = @(Get-TrackedChanges)
-        $unexpected = @($dirty | Where-Object { $_ -ine 'upgrade.cmd' -or -not $legacyUpdaterTree })
+        $unexpected = @($dirty | Where-Object { $_ -ine 'upgrade.cmd' })
         if ($unexpected.Count -gt 0) {
             Write-Log ('Tracked local changes: ' + ($unexpected -join ', '))
             Fail 'Local tracked source changes exist. Commit or revert them before upgrading.'
         }
-        if ($legacyUpdaterTree -and $dirty -contains 'upgrade.cmd') {
-            $HadWarning = $true
-            Write-Log 'WARNING: Local upgrade.cmd differs from the legacy index. It is the known recoverable self-update artifact and will be replaced from origin/devel.'
+
+        if ($dirty -contains 'upgrade.cmd') {
+            & git diff --quiet "origin/$Branch" -- 'upgrade.cmd'
+            $upgradeDiffCode = $LASTEXITCODE
+            if ($upgradeDiffCode -eq 0) {
+                $HadWarning = $true
+                Write-Log 'WARNING: Local upgrade.cmd differs only from the old local index and already matches origin/devel. It will be normalized by repository synchronization.'
+            }
+            elseif ($upgradeDiffCode -eq 1) {
+                Fail 'Local upgrade.cmd contains real changes that differ from origin/devel. Preserve or revert them before upgrading.'
+            }
+            else {
+                Fail "Unable to compare local upgrade.cmd with origin/devel (git diff exit code $upgradeDiffCode)."
+            }
         }
 
-        # The active launcher and this runner execute from TEMP, so replacing repository updater files is safe.
+        # This runner executes from TEMP. It must not assume that any updater file exists in the old HEAD.
         Invoke-Native git @('checkout', '-B', $Branch, "origin/$Branch", '--force') | Out-Null
 
         $activeBranch = Get-GitText @('branch', '--show-current')
