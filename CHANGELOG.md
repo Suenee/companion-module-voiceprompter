@@ -102,7 +102,7 @@
 - All three new control calls use `expectsResponse: true` so VoicePrompter can return correlated success/error results.
 
 ## 0.9.9 (devel)
-- Fixed marker state being cleared by unrelated VPP traffic such as ping/response messages. `marker_args` and marker `command` now keep the last received word until another marker event arrives.
+- Fixed marker state being cleared by unrelated VPP traffic such as ping/response messages. `marker_args` and marker `command` now keep the last marker value until another marker event arrives.
 - Added configurable direct marker argument variables. `Marker argument variables` in module settings selects how many variables are registered, from 0 through 5; default is 5.
 - Direct variables are zero-based: `marker_arg0`, `marker_arg1`, `marker_arg2`, `marker_arg3`, `marker_arg4`.
 - On each marker event, registered direct argument variables are updated from the marker args array. Missing positions are cleared so stale arguments cannot leak from the previous marker.
