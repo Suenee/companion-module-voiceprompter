@@ -40,7 +40,7 @@
 - Existing `statusBarModeChanged`, write-before-delivery, zone replay, reconnect/resync behavior, and Companion action IDs remain unchanged.
 
 ## 0.11.1 (devel)
-- On VPM/Companion start, Status Bar `activeZoneCount` is initialized from the configured **Maximum Status Bar zones** value (default 6).
+- On VPM/Companion start, Status Bar `activeZoneCount` is initialized from the configured `Maximum Status Bar zones` value (default 6).
 - `Status Bar: Set Zone Count` remains a runtime override, so the active count can be reduced and later restored up to the configured maximum without an initial zone-count action.
 - Status Bar mode still starts unknown; initializing the zone count does not turn an empty/unknown Status Bar state into `off`, `top`, or `bottom`.
 - Updated the `Maximum Status Bar zones` configuration tooltip to document its startup-default role.
@@ -49,7 +49,7 @@
 - Implemented the current VPP Status Bar authority model: VPM now keeps the latest valid Status Bar state as runtime memory for the lifetime of the running Companion/VPM instance.
 - Status Bar runtime memory starts empty/unknown after a Companion/VPM restart; `off` remains a distinct valid state and no default mode/count is invented.
 - Removed persistence of the Status Bar snapshot from Companion configuration. Legacy `statusBarSnapshot` configuration is discarded during normalization.
-- Status Bar actions now update VPM memory before attempting delivery to VP, so temporary VP/VPBridge unavailability does not lose the latest desired Status Bar state.
+- Status Bar actions now update VPM memory before attempting delivery to VP, so temporary VP/VPBridge unavailability does not lose the latest desired state.
 - `Status Bar: Mode` now also follows write-before-delivery semantics and remains remembered while VP is unavailable.
 - Added handling of VP `statusBarSyncRequest`; VPM returns `available:false` when runtime memory cannot restore a complete state, or replays the current atomic Status Bar state and returns `available:true`.
 - `statusBarModeChanged` updates VPM memory before any zone replay; replay triggered by this event never sends an old mode back to VP.
@@ -102,7 +102,7 @@
 - All three new control calls use `expectsResponse: true` so VoicePrompter can return correlated success/error results.
 
 ## 0.9.9 (devel)
-- Fixed marker state being cleared by unrelated VPP traffic such as ping/response messages. `marker_args` and marker `command` now keep the last marker value until another marker event arrives.
+- Fixed marker state being cleared by unrelated VPP traffic such as ping/response messages. `marker_args` and marker `command` now keep the last received word until another marker event arrives.
 - Added configurable direct marker argument variables. `Marker argument variables` in module settings selects how many variables are registered, from 0 through 5; default is 5.
 - Direct variables are zero-based: `marker_arg0`, `marker_arg1`, `marker_arg2`, `marker_arg3`, `marker_arg4`.
 - On each marker event, registered direct argument variables are updated from the marker args array. Missing positions are cleared so stale arguments cannot leak from the previous marker.
