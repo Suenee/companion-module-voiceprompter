@@ -8,13 +8,14 @@ $ProgressPreference = 'SilentlyContinue'
 
 $RepoUrl = 'https://github.com/Suenee/companion-module-voiceprompter.git'
 $Branch = 'devel'
-$UpdaterRevision = '2'
+$UpdaterRevision = '3'
 $RepoDir = [System.IO.Path]::GetFullPath($RepoDir).TrimEnd('\')
 $LogDir = Join-Path $RepoDir 'logs'
 $LogFile = Join-Path $LogDir 'upgrade.log'
 $Phase = 'BOOTSTRAP'
 $HadWarning = $false
 $Mutex = $null
+$MutexOwned = $false
 
 function Write-Log {
     param([string]$Message = '')
@@ -86,7 +87,15 @@ try {
     $sha = [Security.Cryptography.SHA256]::Create()
     try { $mutexKey = ([BitConverter]::ToString($sha.ComputeHash($mutexKeyBytes))).Replace('-', '') } finally { $sha.Dispose() }
     $Mutex = New-Object System.Threading.Mutex($false, "Global\SUMUpgrade_$mutexKey")
-    if (-not $Mutex.WaitOne(0)) { Fail 'Another upgrade is already running for this repository.' }
+    try {
+        $MutexOwned = $Mutex.WaitOne(0)
+    }
+    catch [System.Threading.AbandonedMutexException] {
+        $MutexOwned = $true
+        $HadWarning = $true
+        Write-Log 'WARNING: Recovered an abandoned upgrade lock from a previous interrupted run.'
+    }
+    if (-not $MutexOwned) { Fail 'Another upgrade is already running for this repository.' }
 
     Push-Location -LiteralPath $RepoDir
     try {
@@ -106,18 +115,21 @@ try {
         $startCommit = Get-GitText @('rev-parse', 'HEAD')
         Write-Log "Starting commit: $startCommit"
 
+        & git cat-file -e 'HEAD:upgrade.ps1' 2>$null
+        $legacyUpdaterTree = ($LASTEXITCODE -ne 0)
+
         Invoke-Native git @('remote', 'set-url', 'origin', $RepoUrl) | Out-Null
         Invoke-Native git @('fetch', 'origin', $Branch) | Out-Null
 
         $dirty = @(Get-TrackedChanges)
-        $unexpected = @($dirty | Where-Object { $_ -ine 'upgrade.cmd' })
+        $unexpected = @($dirty | Where-Object { $_ -ine 'upgrade.cmd' -or -not $legacyUpdaterTree })
         if ($unexpected.Count -gt 0) {
             Write-Log ('Tracked local changes: ' + ($unexpected -join ', '))
             Fail 'Local tracked source changes exist. Commit or revert them before upgrading.'
         }
-        if ($dirty -contains 'upgrade.cmd') {
+        if ($legacyUpdaterTree -and $dirty -contains 'upgrade.cmd') {
             $HadWarning = $true
-            Write-Log 'WARNING: Local upgrade.cmd differs from the current index. It is treated as the recoverable legacy self-update artifact and will be replaced from origin/devel.'
+            Write-Log 'WARNING: Local upgrade.cmd differs from the legacy index. It is the known recoverable self-update artifact and will be replaced from origin/devel.'
         }
 
         # The active launcher and this runner execute from TEMP, so replacing repository updater files is safe.
@@ -188,7 +200,7 @@ catch {
 }
 finally {
     if ($Mutex) {
-        try { $Mutex.ReleaseMutex() } catch {}
+        if ($MutexOwned) { try { $Mutex.ReleaseMutex() } catch {} }
         $Mutex.Dispose()
     }
 }
