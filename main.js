@@ -6,11 +6,11 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const MODULE_VERSION = '0.12.9'
+const MODULE_VERSION = '0.12.10'
 const SUPPORTED_MANIFEST_VERSION = 1
 const DEFAULT_HOST = '127.0.0.1'
 const DEFAULT_PORT = 8170
-const DEFAULT_CNAME = 'bc'
+const DEFAULT_CNAME = ''
 const RECONNECT_MS = 2000
 const DEFAULT_HEARTBEAT_MS = 30000
 const HEARTBEAT_GRACE_MS = 5000
@@ -230,7 +230,7 @@ class SocketUniverseInstance extends InstanceBase {
     if (typeof n.manifest !== 'string' || (!MANIFESTS.has(n.manifest) && n.manifest !== 'none')) { n.manifest = 'none'; changed = true }
     let host = String(n.host ?? '').trim()
     let port = Number(n.port)
-    let cname = String(n.cname ?? '').trim()
+    const cname = String(n.cname ?? '').trim()
     const apiKey = String(n.apiKey ?? '').trim()
     if ((!host || !Number.isInteger(port) || port < 1 || port > 65535) && n.url) {
       try {
@@ -241,7 +241,6 @@ class SocketUniverseInstance extends InstanceBase {
     }
     if (!host) { host = DEFAULT_HOST; changed = true }
     if (!Number.isInteger(port) || port < 1 || port > 65535) { port = DEFAULT_PORT; changed = true }
-    if (!cname) { cname = DEFAULT_CNAME; changed = true }
     n.host = host
     n.port = port
     n.cname = cname
@@ -270,10 +269,10 @@ class SocketUniverseInstance extends InstanceBase {
   getConfigFields() {
     const choices = [{ id: 'none', label: 'None' }, ...[...MANIFESTS.values()].map((m) => ({ id: m.id, label: `${m.name} (${m.version})` }))]
     const fields = [
-      { type: 'dropdown', id: 'manifest', label: 'Manifest', width: 12, default: 'none', choices, tooltip: 'Select the application communication manifest. SUM does not connect when None is selected.' },
-      { type: 'textinput', id: 'host', label: 'SUB IP Address', width: 8, default: DEFAULT_HOST },
+      { type: 'dropdown', id: 'manifest', label: 'Manifest', width: 12, default: 'none', choices, tooltip: 'Required. Select the application communication manifest. SUM does not connect when None is selected.' },
+      { type: 'textinput', id: 'host', label: 'IP Address', width: 8, default: DEFAULT_HOST, required: true, minLength: 1 },
       { type: 'number', id: 'port', label: 'Port', width: 4, default: DEFAULT_PORT, min: 1, max: 65535, step: 1, required: true },
-      { type: 'textinput', id: 'cname', label: 'Socket Box (cname)', width: 12, default: DEFAULT_CNAME, tooltip: 'SUB Socket Box name used by this SUM instance. Existing VoicePrompter setups use bc.' },
+      { type: 'textinput', id: 'cname', label: 'Socket Box', width: 12, default: DEFAULT_CNAME, required: true, minLength: 1, tooltip: 'Socket Box name used by this SUM instance.' },
       { type: 'textinput', id: 'apiKey', label: 'API Key', width: 12, default: '', tooltip: 'API key used by the Socket Universe Bridge/Server connection.' },
     ]
     const selected = MANIFESTS.get(this.config?.manifest)
@@ -292,7 +291,7 @@ class SocketUniverseInstance extends InstanceBase {
     let host = String(this.config?.host ?? '').trim() || DEFAULT_HOST
     let port = Number(this.config?.port)
     if (!Number.isInteger(port)) port = DEFAULT_PORT
-    const cname = String(this.config?.cname ?? '').trim() || DEFAULT_CNAME
+    const cname = String(this.config?.cname ?? '').trim()
     return { host, port, cname, apiKey: String(this.config?.apiKey ?? '').trim() }
   }
 
@@ -728,7 +727,7 @@ class SocketUniverseInstance extends InstanceBase {
     const target = `Connecting to ${this.getDisplayUrl()}`
     this.setHealth('gray', target, InstanceStatus.Connecting)
     if (!cname || cname === SERVER_MAILBOX) {
-      this.setHealth('red', 'Socket Box (cname) must be a non-empty name other than server', InstanceStatus.BadConfig)
+      this.setHealth('red', 'Socket Box must be a non-empty name other than server', InstanceStatus.BadConfig)
       return
     }
     if (apiKey && !/^[a-fA-F0-9]{64}$/.test(apiKey)) {
