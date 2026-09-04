@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.12.4 (devel)
+- Replaced the fragile self-overwriting batch updater with the shared Windows upgrade architecture proven in the FolderHeatMap upgrade standard: a tiny `upgrade.cmd` launcher executes from `%TEMP%` and runs the authoritative `upgrade.ps1` extracted from `origin/devel`.
+- The repository copy of `upgrade.cmd` is no longer overwritten while it is executing, removing the dirty-index/reset failure seen after the previous self-update stage.
+- Added exact process-scoped Git `safe.directory` handling for mapped/network repositories, explicit `devel` synchronization and `HEAD == origin/devel` verification.
+- Added strict tracked-change protection while allowing the known legacy dirty `upgrade.cmd` artifact to recover once during migration to the new updater.
+- Removed broad `git clean -fd`; the updater no longer deletes arbitrary untracked runtime/user files.
+- Added `logs/upgrade.log`, named upgrade phases, single-run diagnostics, upgrade locking, dependency/build execution, synchronized-version verification, and stable SUCCESS/WARNING/FAILED markers.
+- Bumped SUM runtime/package/Companion versions to 0.12.4. No VPP or application manifest changes are part of this release.
+
 ## 0.12.3 (devel)
 - Added configurable `Socket Box (cname)` connection field before the API key. Existing VoicePrompter instances default to `bc`, but the local Socket Box is no longer hard-coded in SUM routing or the SUB WebSocket URL.
 - Updated the generic SUM transport runtime to the current VPP v1 Socket Box admission contract: after WebSocket authentication SUM sends `registerConnection` with the local host name and does not send normal application traffic until SUB returns `status: "admitted"`.
