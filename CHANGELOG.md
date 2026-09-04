@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.12.3 (devel)
+- Added configurable `Socket Box (cname)` connection field before the API key. Existing VoicePrompter instances default to `bc`, but the local Socket Box is no longer hard-coded in SUM routing or the SUB WebSocket URL.
+- Updated the generic SUM transport runtime to the current VPP v1 Socket Box admission contract: after WebSocket authentication SUM sends `registerConnection` with the local host name and does not send normal application traffic until SUB returns `status: "admitted"`.
+- Added handling of `replacementNegotiation`, `CONNECTION_NEGOTIATION_IN_PROGRESS`, `replaced`, and `negotiationTimeout`. SUM never automatically disconnects an arbitrary existing connection; when replacement negotiation is required it exposes a warning and logs the human-readable connection roster supplied by SUB.
+- Kept heartbeat/server calls available during transport negotiation while blocking manifest application traffic until admission.
+- Added compatibility parsing for both `socketBoxes` and legacy `mailboxes` server-ping state containers.
+- Preserved the existing VoicePrompter manifest and VPP protocol version 1; no manifest file was modified by this upgrade.
+
 ## 0.12.2 (devel)
 - Added VoicePrompter `Navigation: Controls` action using VPP `setNavigationControls` with `on`, `off`, and `toggle` states.
 - Added synchronized Companion variable `navigation_controls`, updated from setting-changing responses, `settingChanged`, and `getSettingsSnapshot` as `navigationControls`.
@@ -32,7 +40,7 @@
 - Existing `statusBarModeChanged`, write-before-delivery, zone replay, reconnect/resync behavior, and Companion action IDs remain unchanged.
 
 ## 0.11.1 (devel)
-- On VPM/Companion start, Status Bar `activeZoneCount` is initialized from the configured `Maximum Status Bar zones` value (default 6).
+- On VPM/Companion start, Status Bar `activeZoneCount` is initialized from the configured **Maximum Status Bar zones** value (default 6).
 - `Status Bar: Set Zone Count` remains a runtime override, so the active count can be reduced and later restored up to the configured maximum without an initial zone-count action.
 - Status Bar mode still starts unknown; initializing the zone count does not turn an empty/unknown Status Bar state into `off`, `top`, or `bottom`.
 - Updated the `Maximum Status Bar zones` configuration tooltip to document its startup-default role.
@@ -41,7 +49,7 @@
 - Implemented the current VPP Status Bar authority model: VPM now keeps the latest valid Status Bar state as runtime memory for the lifetime of the running Companion/VPM instance.
 - Status Bar runtime memory starts empty/unknown after a Companion/VPM restart; `off` remains a distinct valid state and no default mode/count is invented.
 - Removed persistence of the Status Bar snapshot from Companion configuration. Legacy `statusBarSnapshot` configuration is discarded during normalization.
-- Status Bar actions now update VPM memory before attempting delivery to VP, so temporary VP/VPBridge unavailability does not lose the latest desired state.
+- Status Bar actions now update VPM memory before attempting delivery to VP, so temporary VP/VPBridge unavailability does not lose the latest desired Status Bar state.
 - `Status Bar: Mode` now also follows write-before-delivery semantics and remains remembered while VP is unavailable.
 - Added handling of VP `statusBarSyncRequest`; VPM returns `available:false` when runtime memory cannot restore a complete state, or replays the current atomic Status Bar state and returns `available:true`.
 - `statusBarModeChanged` updates VPM memory before any zone replay; replay triggered by this event never sends an old mode back to VP.
