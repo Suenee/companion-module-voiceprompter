@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.12.8 (devel)
+- Replaced direct PowerShell native-command execution in `upgrade.ps1` with a `System.Diagnostics.Process` wrapper so Git/npm stdout, stderr, and process exit codes are handled independently.
+- Git progress and informational text written to stderr no longer becomes a terminating PowerShell error under Windows PowerShell 5.1; success/failure is determined only by the child process exit code.
+- Routed repository probes, tracked-change inspection, Git synchronization, Node/npm version checks, dependency installation, and build execution through the same process wrapper. `.cmd` tools such as npm are executed through `cmd.exe` while their exit code and output remain captured deterministically.
+- Bumped updater revision to 7 and SUM runtime/package/Companion versions to 0.12.8. No VPP or application manifest changes are part of this release.
+
 ## 0.12.7 (devel)
 - Fixed Windows PowerShell 5.1 native-command argument binding in `upgrade.ps1`: `Invoke-Native` now accepts an explicit string-array `-Arguments` parameter instead of relying on `ValueFromRemainingArguments`.
 - Updated every `git` and `npm` call routed through `Invoke-Native` to use named `-FilePath` / `-Arguments` binding, so commands such as `git remote set-url origin ...` are passed as separate native arguments instead of one invalid combined command string.
