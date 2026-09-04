@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.12.5 (devel)
+- Fixed the temporary batch launcher so the repository path assigned inside the `--temp-launcher` parenthesized block is read with delayed expansion (`!REPO_DIR!`) instead of stale `%REPO_DIR%` expansion.
+- The launcher now enters the actual repository, applies the exact process-scoped `safe.directory` value to that repository, and passes the correct repository path to the temporary `upgrade.ps1` runner.
+- This fixes the false `This folder is not a Git working tree` failure seen when the temporary launcher executed from `%TEMP%`.
+- Bumped SUM runtime/package/Companion versions to 0.12.5. No VPP, application manifest, or `upgrade.ps1` changes are part of this release.
+
 ## 0.12.4 (devel)
 - Replaced the fragile self-overwriting batch updater with the shared Windows upgrade architecture proven in the FolderHeatMap upgrade standard: a tiny `upgrade.cmd` launcher executes from `%TEMP%` and runs the authoritative `upgrade.ps1` extracted from `origin/devel`.
 - The repository copy of `upgrade.cmd` is no longer overwritten while it is executing, removing the dirty-index/reset failure seen after the previous self-update stage.
