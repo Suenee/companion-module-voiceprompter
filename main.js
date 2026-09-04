@@ -1,22 +1,23 @@
 import { InstanceBase, InstanceStatus, runEntrypoint } from '@companion-module/base'
 import WebSocket from 'ws'
 import { randomBytes } from 'node:crypto'
+import { hostname } from 'node:os'
 import { readFileSync, readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const MODULE_VERSION = '0.12.2'
+const MODULE_VERSION = '0.12.3'
 const SUPPORTED_MANIFEST_VERSION = 1
 const DEFAULT_HOST = '127.0.0.1'
 const DEFAULT_PORT = 8170
+const DEFAULT_CNAME = 'bc'
 const RECONNECT_MS = 2000
 const DEFAULT_HEARTBEAT_MS = 30000
 const HEARTBEAT_GRACE_MS = 5000
 const GRACEFUL_DISCONNECT_FLUSH_MS = 150
-const LOCAL_MAILBOX = 'bc'
 const TARGET_MAILBOX = 'vp'
 const SERVER_MAILBOX = 'server'
-const SERVER_DISCONNECT_REASONS = new Set(['shutdown', 'restart', 'exit'])
+const SERVER_DISCONNECT_REASONS = new Set(['shutdown', 'restart', 'exit', 'replaced', 'negotiationTimeout'])
 const DIAGNOSTIC_ICONS = { green: '🟢', yellow: '🟡', red: '🔴', gray: '⚪' }
 const MANIFEST_DIR = join(dirname(fileURLToPath(import.meta.url)), 'manifest')
 
@@ -120,6 +121,9 @@ class SocketUniverseInstance extends InstanceBase {
   heartbeatTimer = null
   heartbeatTimeout = null
   pendingPingId = null
+  registrationPendingId = null
+  admissionState = 'disconnected'
+  admissionInfo = null
   settingsSnapshotPendingId = null
   settingsSnapshotSynced = false
   destroyed = false
@@ -226,6 +230,7 @@ class SocketUniverseInstance extends InstanceBase {
     if (typeof n.manifest !== 'string' || (!MANIFESTS.has(n.manifest) && n.manifest !== 'none')) { n.manifest = 'none'; changed = true }
     let host = String(n.host ?? '').trim()
     let port = Number(n.port)
+    let cname = String(n.cname ?? '').trim()
     const apiKey = String(n.apiKey ?? '').trim()
     if ((!host || !Number.isInteger(port) || port < 1 || port > 65535) && n.url) {
       try {
@@ -236,8 +241,10 @@ class SocketUniverseInstance extends InstanceBase {
     }
     if (!host) { host = DEFAULT_HOST; changed = true }
     if (!Number.isInteger(port) || port < 1 || port > 65535) { port = DEFAULT_PORT; changed = true }
+    if (!cname) { cname = DEFAULT_CNAME; changed = true }
     n.host = host
     n.port = port
+    n.cname = cname
     n.apiKey = apiKey
     if ('statusBarSnapshot' in n) { delete n.statusBarSnapshot; changed = true }
 
@@ -266,6 +273,7 @@ class SocketUniverseInstance extends InstanceBase {
       { type: 'dropdown', id: 'manifest', label: 'Manifest', width: 12, default: 'none', choices, tooltip: 'Select the application communication manifest. SUM does not connect when None is selected.' },
       { type: 'textinput', id: 'host', label: 'SUB IP Address', width: 8, default: DEFAULT_HOST },
       { type: 'number', id: 'port', label: 'Port', width: 4, default: DEFAULT_PORT, min: 1, max: 65535, step: 1, required: true },
+      { type: 'textinput', id: 'cname', label: 'Socket Box (cname)', width: 12, default: DEFAULT_CNAME, tooltip: 'SUB Socket Box name used by this SUM instance. Existing VoicePrompter setups use bc.' },
       { type: 'textinput', id: 'apiKey', label: 'API Key', width: 12, default: '', tooltip: 'API key used by the Socket Universe Bridge/Server connection.' },
     ]
     const selected = MANIFESTS.get(this.config?.manifest)
@@ -284,27 +292,45 @@ class SocketUniverseInstance extends InstanceBase {
     let host = String(this.config?.host ?? '').trim() || DEFAULT_HOST
     let port = Number(this.config?.port)
     if (!Number.isInteger(port)) port = DEFAULT_PORT
-    return { host, port, apiKey: String(this.config?.apiKey ?? '').trim() }
+    const cname = String(this.config?.cname ?? '').trim() || DEFAULT_CNAME
+    return { host, port, cname, apiKey: String(this.config?.apiKey ?? '').trim() }
+  }
+
+  getLocalSocketBox() {
+    return this.getConnectionSettings().cname
   }
 
   getUrl() {
-    const { host, port, apiKey } = this.getConnectionSettings()
-    const u = new URL(`ws://${host}:${port}/${LOCAL_MAILBOX}`)
+    const { host, port, cname, apiKey } = this.getConnectionSettings()
+    const u = new URL(`ws://${host}:${port}/${encodeURIComponent(cname)}`)
     if (apiKey) u.searchParams.set('apiKey', apiKey)
     return u.toString()
   }
 
   getDisplayUrl() {
-    const { host, port } = this.getConnectionSettings()
-    return `ws://${host}:${port}/${LOCAL_MAILBOX}`
+    const { host, port, cname } = this.getConnectionSettings()
+    return `ws://${host}:${port}/${cname}`
   }
 
   sourceInfo() {
     return { app: this.manifest?.sourceApp ?? 'SocketUniverseModule', version: MODULE_VERSION, instance: this.label || this.id }
   }
 
+  transportSourceInfo() {
+    return { app: 'Socket Universe Module', version: MODULE_VERSION, instance: this.label || this.id }
+  }
+
   envelope(type, recipient, extra = {}) {
-    return { protocolVersion: this.manifest?.vppVersion ?? 1, id: uuidV7(), type, from: LOCAL_MAILBOX, recipient, ...extra, source: this.sourceInfo(), timestamp: new Date().toISOString() }
+    return {
+      protocolVersion: this.manifest?.vppVersion ?? 1,
+      id: uuidV7(),
+      type,
+      from: this.getLocalSocketBox(),
+      recipient,
+      ...extra,
+      source: recipient === SERVER_MAILBOX ? this.transportSourceInfo() : this.sourceInfo(),
+      timestamp: new Date().toISOString(),
+    }
   }
 
   withQueue(extra, queue) {
@@ -318,13 +344,14 @@ class SocketUniverseInstance extends InstanceBase {
 
   sendVpp(msg) {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) throw new Error('SUB is not connected')
+    if (msg.recipient !== SERVER_MAILBOX && this.admissionState !== 'admitted') throw new Error(`Socket Box "${this.getLocalSocketBox()}" is not admitted`)
     this.ws.send(JSON.stringify(msg))
     if (msg.recipient === TARGET_MAILBOX) this.setRoleValues({ lastSent: new Date().toISOString() })
     if (this.config?.debug) this.log('debug', `TX VPP ${JSON.stringify(msg)}`)
   }
 
   sendToPeerIfAvailable(msg) {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN || !this.peerConnected) return false
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN || this.admissionState !== 'admitted' || !this.peerConnected) return false
     this.sendVpp(msg)
     return true
   }
@@ -535,6 +562,7 @@ class SocketUniverseInstance extends InstanceBase {
   async executeAction(spec, action) {
     if (spec.operation === 'raw') {
       if (!this.ws || this.ws.readyState !== WebSocket.OPEN) throw new Error('SUB is not connected')
+      if (this.admissionState !== 'admitted') throw new Error(`Socket Box "${this.getLocalSocketBox()}" is not admitted`)
       const payload = await this.parseVariablesInString(String(action.options.payload ?? ''))
       this.ws.send(payload)
       return
@@ -639,7 +667,7 @@ class SocketUniverseInstance extends InstanceBase {
   }
 
   executeReplay(name) {
-    if (!this.peerConnected || !this.ws || this.ws.readyState !== WebSocket.OPEN) return false
+    if (!this.peerConnected || !this.ws || this.ws.readyState !== WebSocket.OPEN || this.admissionState !== 'admitted') return false
     const steps = this.manifest?.replays?.[name]
     if (!Array.isArray(steps)) return false
     for (const step of steps) {
@@ -691,11 +719,18 @@ class SocketUniverseInstance extends InstanceBase {
     this.clearReconnect()
     this.stopHeartbeat()
     this.serverDisconnectReason = null
+    this.registrationPendingId = null
+    this.admissionState = 'connecting'
+    this.admissionInfo = null
     this.settingsSnapshotPendingId = null
     this.settingsSnapshotSynced = false
-    const { apiKey } = this.getConnectionSettings()
+    const { apiKey, cname } = this.getConnectionSettings()
     const target = `Connecting to ${this.getDisplayUrl()}`
     this.setHealth('gray', target, InstanceStatus.Connecting)
+    if (!cname || cname === SERVER_MAILBOX) {
+      this.setHealth('red', 'Socket Box (cname) must be a non-empty name other than server', InstanceStatus.BadConfig)
+      return
+    }
     if (apiKey && !/^[a-fA-F0-9]{64}$/.test(apiKey)) {
       this.setHealth('red', 'API Key must be 64 hexadecimal characters', InstanceStatus.BadConfig)
       return
@@ -715,10 +750,10 @@ class SocketUniverseInstance extends InstanceBase {
       this.peerConnected = false
       this.settingsSnapshotSynced = false
       this.lastActivityAt = Date.now()
-      this.setRoleValues({ serverConnected: 1, connectionState: 'bridge-only' })
-      this.setHealth('yellow', `SUB connected; checking ${this.manifest.peerLabel} mailbox`)
-      this.startHeartbeat()
-      this.sendPing()
+      this.admissionState = 'registering'
+      this.setRoleValues({ serverConnected: 1, peerConnected: 0, connectionState: 'bridge-only' })
+      this.setHealth('gray', `SUB connected; registering Socket Box "${cname}"`, InstanceStatus.Connecting)
+      this.registerConnection()
     })
     this.ws.on('message', (d) => this.handleMessage(d))
     this.ws.on('close', (c) => {
@@ -731,6 +766,74 @@ class SocketUniverseInstance extends InstanceBase {
     this.ws.on('error', (e) => { this.setHealth('red', `SUB WebSocket error: ${e.message}`, InstanceStatus.ConnectionFailure); this.log('error', `SUB WebSocket error: ${e.message}`) })
   }
 
+  registerConnection() {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN || this.registrationPendingId) return
+    let hostName = ''
+    try { hostName = String(hostname() ?? '').trim() } catch {}
+    const args = hostName ? { hostName } : {}
+    const msg = this.envelope('call', SERVER_MAILBOX, { method: 'registerConnection', args, expectsResponse: true })
+    this.registrationPendingId = msg.id
+    this.sendVpp(msg)
+  }
+
+  describeNegotiation(result) {
+    const entries = Array.isArray(result?.connections) ? result.connections : []
+    if (!entries.length) return 'no active connection details supplied'
+    return entries.map((c) => {
+      const host = typeof c?.hostName === 'string' && c.hostName.trim() ? c.hostName.trim() : ''
+      const ip = typeof c?.ip === 'string' && c.ip.trim() ? c.ip.trim() : '?'
+      const service = typeof c?.service === 'string' && c.service.trim() ? ` / ${c.service.trim()}` : ''
+      return `${host ? `${host} (${ip})` : ip}${service}`
+    }).join(', ')
+  }
+
+  handleRegistrationResult(m) {
+    if (!this.registrationPendingId || m.correlationId !== this.registrationPendingId || !['response', 'error'].includes(m.type)) return false
+    this.registrationPendingId = null
+    if (m.type === 'error') {
+      const code = isObject(m.error) ? String(m.error.code ?? '') : ''
+      const text = code === 'CONNECTION_NEGOTIATION_IN_PROGRESS'
+        ? `Socket Box "${this.getLocalSocketBox()}" already has a replacement negotiation in progress`
+        : `Socket Box registration failed${code ? ` (${code})` : ''}`
+      this.admissionState = 'rejected'
+      this.setHealth(code === 'CONNECTION_NEGOTIATION_IN_PROGRESS' ? 'yellow' : 'red', text, code === 'CONNECTION_NEGOTIATION_IN_PROGRESS' ? (InstanceStatus.UnknownWarning ?? InstanceStatus.ConnectionFailure) : InstanceStatus.ConnectionFailure)
+      return true
+    }
+    if (!isObject(m.result) || typeof m.result.status !== 'string') {
+      this.admissionState = 'rejected'
+      this.protocolFailure('Invalid registerConnection response', JSON.stringify(m))
+      this.setHealth('red', 'Invalid Socket Box registration response', InstanceStatus.ConnectionFailure)
+      return true
+    }
+    if (m.result.status === 'admitted') {
+      this.admissionState = 'admitted'
+      this.admissionInfo = isObject(m.result.connection) ? deepClone(m.result.connection) : null
+      this.lastActivityAt = Date.now()
+      this.setRoleValues({ serverConnected: 1, peerConnected: 0, connectionState: 'bridge-only' })
+      this.setHealth('yellow', `Socket Box "${this.getLocalSocketBox()}" admitted; checking ${this.manifest.peerLabel}`)
+      this.startHeartbeat()
+      this.sendPing()
+      return true
+    }
+    if (m.result.status === 'replacementNegotiation') {
+      this.admissionState = 'negotiating'
+      this.admissionInfo = deepClone(m.result)
+      this.lastActivityAt = Date.now()
+      this.peerConnected = false
+      this.setRoleValues({ serverConnected: 1, peerConnected: 0, connectionState: 'bridge-only' })
+      const roster = this.describeNegotiation(m.result)
+      const expires = typeof m.result.expiresAt === 'string' ? `; expires ${m.result.expiresAt}` : ''
+      this.log('warn', `Socket Box replacement negotiation required: ${roster}${expires}`)
+      this.setHealth('yellow', `Socket Box "${this.getLocalSocketBox()}" is full; replacement negotiation required`)
+      this.startHeartbeat()
+      return true
+    }
+    this.admissionState = 'rejected'
+    this.protocolFailure(`Unknown registerConnection status "${m.result.status}"`, JSON.stringify(m))
+    this.setHealth('red', 'Unsupported Socket Box registration status', InstanceStatus.ConnectionFailure)
+    return true
+  }
+
   disconnect() {
     const s = this.ws
     this.ws = null
@@ -741,6 +844,9 @@ class SocketUniverseInstance extends InstanceBase {
   setDisconnected() {
     this.stopHeartbeat()
     this.peerConnected = false
+    this.registrationPendingId = null
+    this.admissionState = 'disconnected'
+    this.admissionInfo = null
     this.settingsSnapshotPendingId = null
     this.settingsSnapshotSynced = false
     this.setRoleValues({ serverConnected: 0, peerConnected: 0, connectionState: 'disconnected' })
@@ -775,15 +881,20 @@ class SocketUniverseInstance extends InstanceBase {
 
   applyPingResponse(m) {
     const result = isObject(m.result) ? m.result : {}
-    const mailboxes = isObject(result.mailboxes) ? result.mailboxes : {}
-    const peer = isObject(mailboxes[TARGET_MAILBOX]) ? mailboxes[TARGET_MAILBOX] : {}
+    const socketBoxes = isObject(result.socketBoxes) ? result.socketBoxes : (isObject(result.mailboxes) ? result.mailboxes : {})
+    const peer = isObject(socketBoxes[TARGET_MAILBOX]) ? socketBoxes[TARGET_MAILBOX] : {}
     const hb = isObject(result.heartbeat) ? result.heartbeat : {}
     const interval = Number(hb.intervalMs)
     if (Number.isInteger(interval) && interval >= 5000 && interval <= 3600000) this.heartbeatIntervalMs = interval
+    this.lastActivityAt = Date.now()
+    if (this.admissionState !== 'admitted') {
+      this.peerConnected = false
+      this.setRoleValues({ serverConnected: 1, peerConnected: 0, connectionState: 'bridge-only', heartbeatInterval: this.heartbeatIntervalMs })
+      return
+    }
     const wasConnected = this.peerConnected
     this.peerConnected = peer.connected === true
     if (!this.peerConnected) { this.settingsSnapshotPendingId = null; this.settingsSnapshotSynced = false }
-    this.lastActivityAt = Date.now()
     this.setRoleValues({ peerConnected: this.peerConnected ? 1 : 0, heartbeatInterval: this.heartbeatIntervalMs })
     this.updateConnectionStatus()
     if (this.peerConnected && !wasConnected) this.requestSettingsSnapshot()
@@ -791,6 +902,10 @@ class SocketUniverseInstance extends InstanceBase {
 
   updateConnectionStatus() {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) { this.setRoleValues({ connectionState: 'disconnected' }); return }
+    if (this.admissionState !== 'admitted') {
+      this.setRoleValues({ connectionState: 'bridge-only', peerConnected: 0 })
+      return
+    }
     if (this.peerConnected) {
       this.setRoleValues({ connectionState: 'connected', peerConnected: 1 })
       this.setHealth('green', `SUB + ${this.manifest.peerLabel} connected`, InstanceStatus.Ok)
@@ -802,11 +917,18 @@ class SocketUniverseInstance extends InstanceBase {
 
   getDiagnosticParts(level) {
     let server, peer
-    if (this.serverDisconnectReason) server = `${DIAGNOSTIC_ICONS.yellow} ${this.serverDisconnectReason === 'restart' ? 'Restarting' : this.serverDisconnectReason === 'shutdown' ? 'Shutting down' : 'Exiting'}`
+    const reasonLabels = {
+      restart: 'Restarting',
+      shutdown: 'Shutting down',
+      exit: 'Exiting',
+      replaced: 'Connection replaced',
+      negotiationTimeout: 'Negotiation timeout',
+    }
+    if (this.serverDisconnectReason) server = `${DIAGNOSTIC_ICONS.yellow} ${reasonLabels[this.serverDisconnectReason] ?? this.serverDisconnectReason}`
     else if (this.ws?.readyState === WebSocket.OPEN) server = `${DIAGNOSTIC_ICONS.green} Connected`
     else if (level === 'gray') server = `${DIAGNOSTIC_ICONS.gray} Connecting / unknown`
     else server = `${DIAGNOSTIC_ICONS.red} Disconnected`
-    if (this.ws?.readyState === WebSocket.OPEN) peer = this.peerConnected ? `${DIAGNOSTIC_ICONS.green} Connected` : `${DIAGNOSTIC_ICONS.yellow} Disconnected`
+    if (this.ws?.readyState === WebSocket.OPEN && this.admissionState === 'admitted') peer = this.peerConnected ? `${DIAGNOSTIC_ICONS.green} Connected` : `${DIAGNOSTIC_ICONS.yellow} Disconnected`
     else peer = `${DIAGNOSTIC_ICONS.gray} Unknown`
     return { server, peer }
   }
@@ -822,7 +944,7 @@ class SocketUniverseInstance extends InstanceBase {
 
   async announceDisconnecting(reason = 'user') {
     const s = this.ws
-    if (!s || s.readyState !== WebSocket.OPEN || !this.manifest) return
+    if (!s || s.readyState !== WebSocket.OPEN || !this.manifest || this.admissionState !== 'admitted') return
     const msg = this.envelope('event', TARGET_MAILBOX, { event: 'disconnecting', args: { reason }, expectsResponse: false, queue: { policy: 'fifo' } })
     const payload = JSON.stringify(msg)
     this.setRoleValues({ lastSent: new Date().toISOString() })
@@ -849,7 +971,8 @@ class SocketUniverseInstance extends InstanceBase {
     if (typeof m.type !== 'string') return 'Missing message type'
     if (!['call', 'event', 'progress', 'response', 'error'].includes(m.type)) return `Unknown message type "${m.type}"`
     if (![TARGET_MAILBOX, SERVER_MAILBOX].includes(m.from)) return `Invalid from "${m.from}"`
-    if (m.recipient !== LOCAL_MAILBOX) return `Message recipient must be "${LOCAL_MAILBOX}"`
+    const local = this.getLocalSocketBox()
+    if (m.recipient !== local) return `Message recipient must be "${local}"`
     if (!isObject(m.source)) return 'Missing or invalid source'
     if (typeof m.timestamp !== 'string' || !m.timestamp.trim()) return 'Missing or invalid timestamp'
     return null
@@ -862,7 +985,7 @@ class SocketUniverseInstance extends InstanceBase {
   }
 
   markValidPeerActivity(m) {
-    if (m.from !== TARGET_MAILBOX) return
+    if (m.from !== TARGET_MAILBOX || this.admissionState !== 'admitted') return
     const wasConnected = this.peerConnected
     this.lastActivityAt = Date.now()
     this.peerConnected = true
@@ -894,7 +1017,7 @@ class SocketUniverseInstance extends InstanceBase {
 
   requestSettingsSnapshot() {
     const method = this.manifest?.settings?.snapshotMethod
-    if (!method || !this.peerConnected || this.settingsSnapshotPendingId || this.settingsSnapshotSynced || !this.ws || this.ws.readyState !== WebSocket.OPEN) return
+    if (!method || this.admissionState !== 'admitted' || !this.peerConnected || this.settingsSnapshotPendingId || this.settingsSnapshotSynced || !this.ws || this.ws.readyState !== WebSocket.OPEN) return
     const msg = this.makeCall(method, {}, true, { policy: 'fifo' })
     this.settingsSnapshotPendingId = msg.id
     this.sendVpp(msg)
@@ -997,6 +1120,12 @@ class SocketUniverseInstance extends InstanceBase {
     const corrErr = this.validateTerminalCorrelation(m)
     if (corrErr) { this.protocolFailure(corrErr, raw); return }
 
+    if (m.from === SERVER_MAILBOX && this.handleRegistrationResult(m)) return
+    if (this.admissionState !== 'admitted' && m.from !== SERVER_MAILBOX) {
+      this.protocolFailure('Application traffic received before Socket Box admission', raw)
+      return
+    }
+
     if (this.pendingPingId && m.from === SERVER_MAILBOX && m.correlationId === this.pendingPingId && (m.type === 'response' || m.type === 'error')) {
       if (this.heartbeatTimeout) { clearTimeout(this.heartbeatTimeout); this.heartbeatTimeout = null }
       this.pendingPingId = null
@@ -1035,12 +1164,15 @@ class SocketUniverseInstance extends InstanceBase {
           this.serverDisconnectReason = reason
           this.stopHeartbeat()
           this.peerConnected = false
+          this.registrationPendingId = null
+          this.admissionState = 'disconnected'
+          this.admissionInfo = null
           this.settingsSnapshotPendingId = null
           this.settingsSnapshotSynced = false
           this.setRoleValues({ serverConnected: 0, peerConnected: 0, connectionState: 'disconnected' })
           this.setHealth('yellow', `SUB ${reason}; reconnecting`, InstanceStatus.UnknownWarning ?? InstanceStatus.Disconnected)
         }
-      } else {
+      } else if (m.from !== SERVER_MAILBOX) {
         const result = this.handleManifestEvent(m, raw)
         if (!result.handled) {
           if (m.expectsResponse === true) this.sendError(m, 'INVALID_MESSAGE', `Unknown event "${m.event}"`)
@@ -1054,7 +1186,7 @@ class SocketUniverseInstance extends InstanceBase {
       }
     }
 
-    if (m.type === 'call') {
+    if (m.type === 'call' && m.from !== SERVER_MAILBOX) {
       if (typeof m.method !== 'string' || !isObject(m.args)) { if (m.expectsResponse === true) this.sendError(m, 'INVALID_MESSAGE', 'Invalid call'); this.protocolFailure('Invalid call', raw); return }
       if (m.expectsResponse === true) this.sendError(m, 'UNKNOWN_METHOD', `SUM has no public method "${m.method}"`)
     }
@@ -1071,7 +1203,7 @@ class SocketUniverseInstance extends InstanceBase {
       errorDetails: jsonValue(error.details), sourceApp: source.app ?? '', sourceVersion: source.version ?? '', sourceInstance: source.instance ?? '', timestamp: m.timestamp,
       payload: raw, lastReceived: new Date().toISOString(), protocolError: ''
     })
-    if (m.type === 'event' && m.expectsResponse === true && !eventAckHandled) this.sendAck(m)
+    if (m.type === 'event' && m.expectsResponse === true && !eventAckHandled && m.from !== SERVER_MAILBOX) this.sendAck(m)
     if (this.config?.debug) this.log('debug', `RX VPP ${raw}`)
   }
 }
