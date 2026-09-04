@@ -8,7 +8,7 @@ $ProgressPreference = 'SilentlyContinue'
 
 $RepoUrl = 'https://github.com/Suenee/companion-module-voiceprompter.git'
 $Branch = 'devel'
-$UpdaterRevision = '8'
+$UpdaterRevision = '9'
 $RepoDir = [System.IO.Path]::GetFullPath($RepoDir).TrimEnd('\')
 $LogDir = Join-Path $RepoDir 'logs'
 $LogFile = Join-Path $LogDir 'upgrade.log'
@@ -16,11 +16,15 @@ $Phase = 'BOOTSTRAP'
 $HadWarning = $false
 $Mutex = $null
 $MutexOwned = $false
+$ResultVersion = $null
 
 function Write-Log {
-    param([string]$Message = '')
+    param(
+        [string]$Message = '',
+        [ConsoleColor]$Color = [ConsoleColor]::Gray
+    )
     $line = if ($Message) { "[{0}] {1}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Message } else { '' }
-    Write-Host $line
+    Write-Host $line -ForegroundColor $Color
     Add-Content -LiteralPath $LogFile -Value $line -Encoding UTF8
 }
 
@@ -93,7 +97,7 @@ function Invoke-ExternalProcess {
             if ([string]::IsNullOrEmpty($stream)) { continue }
             foreach ($line in ($stream -split "`r?`n")) {
                 if ($line -eq '') { continue }
-                Write-Host $line
+                Write-Host $line -ForegroundColor Gray
                 Add-Content -LiteralPath $LogFile -Value $line -Encoding UTF8
             }
         }
@@ -151,7 +155,7 @@ try {
     catch [System.Threading.AbandonedMutexException] {
         $MutexOwned = $true
         $HadWarning = $true
-        Write-Log 'WARNING: Recovered an abandoned upgrade lock from a previous interrupted run.'
+        Write-Log 'WARNING: Recovered an abandoned upgrade lock from a previous interrupted run.' Yellow
     }
     if (-not $MutexOwned) { Fail 'Another upgrade is already running for this repository.' }
 
@@ -182,7 +186,7 @@ try {
         $dirty = @(Get-TrackedChanges)
         $unexpected = @($dirty | Where-Object { $_ -ine 'upgrade.cmd' })
         if ($unexpected.Count -gt 0) {
-            Write-Log ('Tracked local changes: ' + ($unexpected -join ', '))
+            Write-Log ('Tracked local changes: ' + ($unexpected -join ', ')) Yellow
             Fail 'Local tracked source changes exist. Commit or revert them before upgrading.'
         }
 
@@ -194,7 +198,7 @@ try {
             New-Item -ItemType Directory -Force -Path $recoveryDir | Out-Null
             Copy-Item -LiteralPath (Join-Path $RepoDir 'upgrade.cmd') -Destination $recoveryFile -Force
             $HadWarning = $true
-            Write-Log "WARNING: Preserved locally modified upgrade.cmd at $recoveryFile before authoritative synchronization."
+            Write-Log "WARNING: Preserved locally modified upgrade.cmd at $recoveryFile before authoritative synchronization." Yellow
         }
 
         # This runner executes from TEMP. The target branch is authoritative for updater-owned files.
@@ -234,26 +238,34 @@ try {
         if ([string]$package.version -ne [string]$manifest.version -or [string]$package.version -ne $mainVersion) {
             Fail "Version mismatch: package=$($package.version), companion=$($manifest.version), main=$mainVersion"
         }
+        $ResultVersion = $mainVersion
         Write-Log "Verified SUM version: $mainVersion"
         if (-not (Test-Path -LiteralPath (Join-Path $RepoDir 'upgrade.cmd'))) { Fail 'upgrade.cmd is missing after synchronization.' }
         if (-not (Test-Path -LiteralPath (Join-Path $RepoDir 'upgrade.ps1'))) { Fail 'upgrade.ps1 is missing after synchronization.' }
 
         Set-Phase 'COMPLETE'
+        Write-Log "RESULT VERSION: $ResultVersion" $(if ($HadWarning) { 'Yellow' } else { 'Green' })
         if ($HadWarning) {
-            Write-Log 'STATUS: WARNING - phase=COMPLETE'
+            Write-Log 'STATUS: WARNING - phase=COMPLETE' Yellow
             Write-Host ''
-            Write-Host '============================================'
-            Write-Host 'DEVEL UPGRADE COMPLETED WITH WARNING'
-            Write-Host '============================================'
+            Write-Host '============================================' -ForegroundColor Yellow
+            Write-Host 'SUM DEVEL UPGRADE COMPLETED WITH WARNING' -ForegroundColor Yellow
+            Write-Host '============================================' -ForegroundColor Yellow
+            Write-Host 'Status: WARNING' -ForegroundColor Yellow
+            Write-Host "Version: $ResultVersion" -ForegroundColor Yellow
         } else {
-            Write-Log 'STATUS: SUCCESS - phase=COMPLETE'
+            Write-Log 'STATUS: SUCCESS - phase=COMPLETE' Green
             Write-Host ''
-            Write-Host '============================================'
-            Write-Host 'DEVEL UPGRADE COMPLETED SUCCESSFULLY'
-            Write-Host '============================================'
+            Write-Host '============================================' -ForegroundColor Green
+            Write-Host 'SUM DEVEL UPGRADE COMPLETED SUCCESSFULLY' -ForegroundColor Green
+            Write-Host '============================================' -ForegroundColor Green
+            Write-Host 'Status: SUCCESS' -ForegroundColor Green
+            Write-Host "Version: $ResultVersion" -ForegroundColor Green
         }
-        Write-Host 'Companion developer module should reload automatically.'
-        Write-Host 'IMPORTANT: Select a manifest in the module configuration. SUM does not connect with Manifest=None.'
+        Write-Host 'Phase: COMPLETE' -ForegroundColor Gray
+        Write-Host "Log: $LogFile" -ForegroundColor Gray
+        Write-Host 'Companion developer module should reload automatically.' -ForegroundColor Gray
+        Write-Host 'IMPORTANT: Manifest, IP Address, Port, and Socket Box are required connection settings.' -ForegroundColor Yellow
         exit 0
     }
     finally {
@@ -261,14 +273,25 @@ try {
     }
 }
 catch {
-    try { Write-Log ("ERROR: " + $_.Exception.Message) } catch { Write-Host ("ERROR: " + $_.Exception.Message) }
-    try { Write-Log "STATUS: FAILED - phase=$Phase" } catch {}
+    $failedVersion = 'unknown'
+    try {
+        $failedPackagePath = Join-Path $RepoDir 'package.json'
+        if (Test-Path -LiteralPath $failedPackagePath) {
+            $failedPackage = Get-Content -LiteralPath $failedPackagePath -Raw | ConvertFrom-Json
+            if ($failedPackage.version) { $failedVersion = [string]$failedPackage.version }
+        }
+    } catch {}
+    try { Write-Log ("ERROR: " + $_.Exception.Message) Red } catch { Write-Host ("ERROR: " + $_.Exception.Message) -ForegroundColor Red }
+    try { Write-Log "RESULT VERSION: $failedVersion (not verified)" Red } catch {}
+    try { Write-Log "STATUS: FAILED - phase=$Phase" Red } catch {}
     Write-Host ''
-    Write-Host '============================================'
-    Write-Host 'DEVEL UPGRADE FAILED'
-    Write-Host '============================================'
-    Write-Host "Phase: $Phase"
-    Write-Host "Log: $LogFile"
+    Write-Host '============================================' -ForegroundColor Red
+    Write-Host 'SUM DEVEL UPGRADE FAILED' -ForegroundColor Red
+    Write-Host '============================================' -ForegroundColor Red
+    Write-Host 'Status: FAILED' -ForegroundColor Red
+    Write-Host "Version: $failedVersion (not verified)" -ForegroundColor Red
+    Write-Host "Phase: $Phase" -ForegroundColor Red
+    Write-Host "Log: $LogFile" -ForegroundColor Gray
     exit 1
 }
 finally {
