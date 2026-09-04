@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.12.9 (devel)
+- Aligned `upgrade.ps1` recovery behavior with the shared FHM `UPGRADE.md` standard: `upgrade.cmd` is now treated as updater-owned bootstrap state and no longer blocks recovery synchronization by itself.
+- All other tracked local changes remain protected and still abort the upgrade before synchronization.
+- If `upgrade.cmd` is locally dirty, its exact current contents are preserved to `logs/recovery/upgrade.cmd.before-sync` and a warning is logged before the authoritative `origin/devel` version replaces it during branch synchronization.
+- Kept the deterministic `HEAD == origin/devel` verification, temporary authoritative runner architecture, and process-based native command execution introduced in 0.12.8.
+- Bumped updater revision to 8 and SUM runtime/package/Companion versions to 0.12.9. No VPP or application manifest changes are part of this release.
+
 ## 0.12.8 (devel)
 - Replaced direct PowerShell native-command execution in `upgrade.ps1` with a `System.Diagnostics.Process` wrapper so Git/npm stdout, stderr, and process exit codes are handled independently.
 - Git progress and informational text written to stderr no longer becomes a terminating PowerShell error under Windows PowerShell 5.1; success/failure is determined only by the child process exit code.
@@ -99,7 +106,7 @@
 - Grouped Companion action names using functional prefixes so related actions stay together in the action picker/search even though Companion does not provide native action categories.
 - Added prefixes: `Advanced`, `Audio`, `Display`, `Document`, `Navigation`, `Reading`, and `Status Bar`.
 - Moved `Voice Commands` into the `Audio` group together with `Microphone`.
-- Kept existing action IDs unchanged, so saved buttons/actions continue to reference the same VPM actions.
+- Kept existing action IDs unchanged, so saved buttons/presets continue to reference the same VPM actions.
 - No VPP changes were required; this release changes only VPM action presentation/naming.
 
 ## 0.10.4 (devel)
