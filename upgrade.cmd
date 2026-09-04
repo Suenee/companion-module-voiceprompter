@@ -12,7 +12,7 @@ if /I "%~1"=="--temp-launcher" (
         exit /b 1
     )
 
-    pushd "%REPO_DIR%" >NUL 2>&1
+    pushd "!REPO_DIR!" >NUL 2>&1
     if errorlevel 1 (
         echo ERROR: Unable to enter repository directory.
         exit /b 1
@@ -40,7 +40,7 @@ if /I "%~1"=="--temp-launcher" (
 
     set "GIT_CONFIG_COUNT=1"
     set "GIT_CONFIG_KEY_0=safe.directory"
-    set "GIT_CONFIG_VALUE_0=%REPO_DIR:\=/%"
+    set "GIT_CONFIG_VALUE_0=!REPO_DIR:\=/!"
 
     git rev-parse --is-inside-work-tree >NUL 2>&1
     if errorlevel 1 (
@@ -67,7 +67,7 @@ if /I "%~1"=="--temp-launcher" (
     )
 
     popd
-    powershell -NoProfile -ExecutionPolicy Bypass -File "!TMP_RUNNER!" -RepoDir "%REPO_DIR%"
+    powershell -NoProfile -ExecutionPolicy Bypass -File "!TMP_RUNNER!" -RepoDir "!REPO_DIR!"
     set "RC=!errorlevel!"
     del /q "!TMP_RUNNER!" >NUL 2>&1
     if not "!RC!"=="0" pause
