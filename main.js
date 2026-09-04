@@ -6,7 +6,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const MODULE_VERSION = '0.12.3'
+const MODULE_VERSION = '0.12.4'
 const SUPPORTED_MANIFEST_VERSION = 1
 const DEFAULT_HOST = '127.0.0.1'
 const DEFAULT_PORT = 8170
