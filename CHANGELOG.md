@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.12.7 (devel)
+- Fixed Windows PowerShell 5.1 native-command argument binding in `upgrade.ps1`: `Invoke-Native` now accepts an explicit string-array `-Arguments` parameter instead of relying on `ValueFromRemainingArguments`.
+- Updated every `git` and `npm` call routed through `Invoke-Native` to use named `-FilePath` / `-Arguments` binding, so commands such as `git remote set-url origin ...` are passed as separate native arguments instead of one invalid combined command string.
+- Kept direct Git probes that already use native argument splatting unchanged.
+- Bumped updater revision to 6 and SUM runtime/package/Companion versions to 0.12.7. No VPP or application manifest changes are part of this release.
+
 ## 0.12.6 (devel)
 - Simplified legacy updater recovery according to the shared `UPGRADE.md` standard: the temporary authoritative `upgrade.ps1` no longer probes whether `upgrade.ps1` exists in the old local `HEAD` before repository synchronization.
 - Removed the failing `git cat-file -e HEAD:upgrade.ps1` migration probe that Windows PowerShell 5.1 could promote to a terminating error under `$ErrorActionPreference = 'Stop'`.
