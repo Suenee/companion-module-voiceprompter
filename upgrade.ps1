@@ -8,7 +8,7 @@ $ProgressPreference = 'SilentlyContinue'
 
 $RepoUrl = 'https://github.com/Suenee/companion-module-voiceprompter.git'
 $Branch = 'devel'
-$UpdaterRevision = '3'
+$UpdaterRevision = '4'
 $RepoDir = [System.IO.Path]::GetFullPath($RepoDir).TrimEnd('\')
 $LogDir = Join-Path $RepoDir 'logs'
 $LogFile = Join-Path $LogDir 'upgrade.log'
@@ -115,7 +115,9 @@ try {
         $startCommit = Get-GitText @('rev-parse', 'HEAD')
         Write-Log "Starting commit: $startCommit"
 
-        & git cat-file -e 'HEAD:upgrade.ps1' 2>$null
+        # A missing upgrade.ps1 is expected on pre-runner revisions. Probe without
+        # inheriting ErrorActionPreference=Stop from native stderr output.
+        $legacyProbe = & git cat-file -e 'HEAD:upgrade.ps1' 2>$null
         $legacyUpdaterTree = ($LASTEXITCODE -ne 0)
 
         Invoke-Native git @('remote', 'set-url', 'origin', $RepoUrl) | Out-Null
