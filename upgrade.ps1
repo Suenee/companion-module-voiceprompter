@@ -8,7 +8,7 @@ $ProgressPreference = 'SilentlyContinue'
 
 $RepoUrl = 'https://github.com/Suenee/companion-module-voiceprompter.git'
 $Branch = 'devel'
-$UpdaterRevision = '7'
+$UpdaterRevision = '8'
 $RepoDir = [System.IO.Path]::GetFullPath($RepoDir).TrimEnd('\')
 $LogDir = Join-Path $RepoDir 'logs'
 $LogFile = Join-Path $LogDir 'upgrade.log'
@@ -186,18 +186,18 @@ try {
             Fail 'Local tracked source changes exist. Commit or revert them before upgrading.'
         }
 
+        # upgrade.cmd is updater-owned bootstrap state. It must never block recovery of an old installation.
+        # If it is locally dirty, preserve the exact current file before authoritative branch synchronization.
         if ($dirty -contains 'upgrade.cmd') {
-            $upgradeDiff = Invoke-ExternalProcess -FilePath $script:GitExe -Arguments @('diff', '--quiet', "origin/$Branch", '--', 'upgrade.cmd') -AllowedExitCodes @(0, 1) -QuietCommand -QuietOutput
-            if ($upgradeDiff.ExitCode -eq 0) {
-                $HadWarning = $true
-                Write-Log 'WARNING: Local upgrade.cmd differs only from the old local index and already matches origin/devel. It will be normalized by repository synchronization.'
-            }
-            else {
-                Fail 'Local upgrade.cmd contains real changes that differ from origin/devel. Preserve or revert them before upgrading.'
-            }
+            $recoveryDir = Join-Path $LogDir 'recovery'
+            $recoveryFile = Join-Path $recoveryDir 'upgrade.cmd.before-sync'
+            New-Item -ItemType Directory -Force -Path $recoveryDir | Out-Null
+            Copy-Item -LiteralPath (Join-Path $RepoDir 'upgrade.cmd') -Destination $recoveryFile -Force
+            $HadWarning = $true
+            Write-Log "WARNING: Preserved locally modified upgrade.cmd at $recoveryFile before authoritative synchronization."
         }
 
-        # This runner executes from TEMP. It must not assume that any updater file exists in the old HEAD.
+        # This runner executes from TEMP. The target branch is authoritative for updater-owned files.
         Invoke-ExternalProcess -FilePath $script:GitExe -Arguments @('checkout', '-B', $Branch, "origin/$Branch", '--force') | Out-Null
 
         $activeBranch = Get-GitText @('branch', '--show-current')
