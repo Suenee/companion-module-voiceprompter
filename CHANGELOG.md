@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.12.10 (devel)
+- Generalized the SUM connection editor: `SUB IP Address` is now `IP Address`, `Socket Box (cname)` is now `Socket Box`, and the Socket Box tooltip no longer contains VoicePrompter-specific wording.
+- New SUM instances now start with an empty Socket Box instead of the legacy `bc` default. Manifest selection, IP Address, Port, and Socket Box are treated as required connection settings; an actual manifest and a non-empty Socket Box are required before SUM can connect. Existing saved Socket Box values remain unchanged.
+- Added `cls` at the start of `upgrade.cmd` so each upgrade begins on a clean console.
+- Improved `upgrade.ps1` console presentation: normal output stays gray/default, warnings are yellow, failures red, and successful completion green while `logs/upgrade.log` remains plain diagnostic text.
+- The final upgrade summary now always reports final status, phase, log path, and the resulting SUM version (or an explicitly unverified version on failure).
+- Bumped updater revision to 9 and SUM runtime/package/Companion versions to 0.12.10. No VPP or application manifest changes are part of this release.
+
 ## 0.12.9 (devel)
 - Aligned `upgrade.ps1` recovery behavior with the shared FHM `UPGRADE.md` standard: `upgrade.cmd` is now treated as updater-owned bootstrap state and no longer blocks recovery synchronization by itself.
 - All other tracked local changes remain protected and still abort the upgrade before synchronization.
@@ -106,7 +114,7 @@
 - Grouped Companion action names using functional prefixes so related actions stay together in the action picker/search even though Companion does not provide native action categories.
 - Added prefixes: `Advanced`, `Audio`, `Display`, `Document`, `Navigation`, `Reading`, and `Status Bar`.
 - Moved `Voice Commands` into the `Audio` group together with `Microphone`.
-- Kept existing action IDs unchanged, so saved buttons/presets continue to reference the same VPM actions.
+- Kept existing action IDs unchanged, so saved buttons/actions remain compatible.
 - No VPP changes were required; this release changes only VPM action presentation/naming.
 
 ## 0.10.4 (devel)
