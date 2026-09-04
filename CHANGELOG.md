@@ -114,7 +114,7 @@
 - Grouped Companion action names using functional prefixes so related actions stay together in the action picker/search even though Companion does not provide native action categories.
 - Added prefixes: `Advanced`, `Audio`, `Display`, `Document`, `Navigation`, `Reading`, and `Status Bar`.
 - Moved `Voice Commands` into the `Audio` group together with `Microphone`.
-- Kept existing action IDs unchanged, so saved buttons/actions remain compatible.
+- Kept existing action IDs unchanged, so saved buttons/actions continue to reference the same VPM actions.
 - No VPP changes were required; this release changes only VPM action presentation/naming.
 
 ## 0.10.4 (devel)
