@@ -8,7 +8,7 @@ $ProgressPreference = 'SilentlyContinue'
 
 $RepoUrl = 'https://github.com/Suenee/companion-module-voiceprompter.git'
 $Branch = 'devel'
-$UpdaterRevision = '5'
+$UpdaterRevision = '6'
 $RepoDir = [System.IO.Path]::GetFullPath($RepoDir).TrimEnd('\')
 $LogDir = Join-Path $RepoDir 'logs'
 $LogFile = Join-Path $LogDir 'upgrade.log'
@@ -38,7 +38,7 @@ function Fail {
 function Invoke-Native {
     param(
         [Parameter(Mandatory = $true)][string]$FilePath,
-        [Parameter(ValueFromRemainingArguments = $true)][string[]]$Arguments
+        [Parameter(Mandatory = $true)][string[]]$Arguments
     )
     Write-Log ("RUN: {0} {1}" -f $FilePath, ($Arguments -join ' '))
     $output = & $FilePath @Arguments 2>&1
@@ -114,8 +114,8 @@ try {
         $startCommit = Get-GitText @('rev-parse', 'HEAD')
         Write-Log "Starting commit: $startCommit"
 
-        Invoke-Native git @('remote', 'set-url', 'origin', $RepoUrl) | Out-Null
-        Invoke-Native git @('fetch', 'origin', $Branch) | Out-Null
+        Invoke-Native -FilePath 'git' -Arguments @('remote', 'set-url', 'origin', $RepoUrl) | Out-Null
+        Invoke-Native -FilePath 'git' -Arguments @('fetch', 'origin', $Branch) | Out-Null
 
         $dirty = @(Get-TrackedChanges)
         $unexpected = @($dirty | Where-Object { $_ -ine 'upgrade.cmd' })
@@ -140,7 +140,7 @@ try {
         }
 
         # This runner executes from TEMP. It must not assume that any updater file exists in the old HEAD.
-        Invoke-Native git @('checkout', '-B', $Branch, "origin/$Branch", '--force') | Out-Null
+        Invoke-Native -FilePath 'git' -Arguments @('checkout', '-B', $Branch, "origin/$Branch", '--force') | Out-Null
 
         $activeBranch = Get-GitText @('branch', '--show-current')
         if ($activeBranch -ne $Branch) { Fail "Active branch is '$activeBranch', expected '$Branch'." }
@@ -153,10 +153,10 @@ try {
         if (-not (Get-Command npm -ErrorAction SilentlyContinue)) { Fail 'npm is not installed or not in PATH.' }
         Write-Log ("Node: " + ((& node --version) -join ' '))
         Write-Log ("npm: " + ((& npm --version) -join ' '))
-        Invoke-Native npm @('install') | Out-Null
+        Invoke-Native -FilePath 'npm' -Arguments @('install') | Out-Null
 
         Set-Phase 'BUILD'
-        Invoke-Native npm @('run', 'build', '--if-present') | Out-Null
+        Invoke-Native -FilePath 'npm' -Arguments @('run', 'build', '--if-present') | Out-Null
 
         Set-Phase 'VERIFY'
         $package = Get-Content -LiteralPath (Join-Path $RepoDir 'package.json') -Raw | ConvertFrom-Json
