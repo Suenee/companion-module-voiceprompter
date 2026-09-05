@@ -6,7 +6,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const MODULE_VERSION = '0.12.10'
+const MODULE_VERSION = '0.12.11'
 const SUPPORTED_MANIFEST_VERSION = 1
 const DEFAULT_HOST = '127.0.0.1'
 const DEFAULT_PORT = 8170
@@ -301,14 +301,14 @@ class SocketUniverseInstance extends InstanceBase {
 
   getUrl() {
     const { host, port, cname, apiKey } = this.getConnectionSettings()
-    const u = new URL(`ws://${host}:${port}/${encodeURIComponent(cname)}`)
+    const u = new URL(`ws://${host}:${port}/mailbox/${encodeURIComponent(cname)}`)
     if (apiKey) u.searchParams.set('apiKey', apiKey)
     return u.toString()
   }
 
   getDisplayUrl() {
     const { host, port, cname } = this.getConnectionSettings()
-    return `ws://${host}:${port}/${cname}`
+    return `ws://${host}:${port}/mailbox/${cname}`
   }
 
   sourceInfo() {
@@ -997,6 +997,7 @@ class SocketUniverseInstance extends InstanceBase {
     if (spec.type === 'string') return typeof value === 'string'
     if (spec.type === 'integer') return Number.isInteger(value) && (spec.min === undefined || value >= spec.min) && (spec.max === undefined || value <= spec.max)
     if (spec.type === 'enum') return typeof value === 'string' && (spec.values ?? []).includes(value)
+    if (spec.type === 'boolean') return typeof value === 'boolean'
     return false
   }
 
@@ -1195,6 +1196,7 @@ class SocketUniverseInstance extends InstanceBase {
     const source = m.source
     const error = isObject(m.error) ? m.error : {}
     const callArgs = m.type === 'call' && isObject(m.args) ? m.args : {}
+    let argOffset = ''
     if (callArgs.offset !== undefined) argOffset = jsonValue(callArgs.offset)
     this.setRoleValues({
       protocolVersion: this.manifest.vppVersion, messageId: m.id, correlationId: m.correlationId ?? '', messageType: m.type, from: m.from, recipient: m.recipient,
