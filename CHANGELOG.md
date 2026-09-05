@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.12.11 (devel)
+- Changed the SUM WebSocket transport URL to the generic SUB Socket Box endpoint `/mailbox/<Socket Box>` instead of the legacy direct `/<Socket Box>` path. For example, `Socket Box = shpc-bc` now connects to `ws://<host>:<port>/mailbox/shpc-bc`.
+- Added manifest schema validation support for native JSON boolean values so declarative events such as SylphyHornPlusCon `desktopStateChanged` can carry real `true` / `false` fields without being rejected by SUM.
+- Bumped SUM runtime/package/Companion versions to 0.12.11. No VPP, application manifest, or updater changes are part of this release.
+
 ## 0.12.10 (devel)
 - Generalized the SUM connection editor: `SUB IP Address` is now `IP Address`, `Socket Box (cname)` is now `Socket Box`, and the Socket Box tooltip no longer contains VoicePrompter-specific wording.
 - New SUM instances now start with an empty Socket Box instead of the legacy `bc` default. Manifest selection, IP Address, Port, and Socket Box are treated as required connection settings; an actual manifest and a non-empty Socket Box are required before SUM can connect. Existing saved Socket Box values remain unchanged.
@@ -32,7 +37,7 @@
 - Removed the failing `git cat-file -e HEAD:upgrade.ps1` migration probe that Windows PowerShell 5.1 could promote to a terminating error under `$ErrorActionPreference = 'Stop'`.
 - A locally dirty `upgrade.cmd` is now accepted only when Git semantics confirm that its working-tree content already matches `origin/devel`; arbitrary local launcher edits still abort the upgrade instead of being overwritten.
 - The temporary runner then synchronizes `devel`, verifies `HEAD == origin/devel`, installs dependencies, builds, and verifies synchronized SUM versions as before.
-- Bumped SUM runtime/package/Companion versions to 0.12.6. No VPP or application manifest changes are part of this release.
+- Bumped SUM runtime/package/Companion versions to 0.12.6. No VPP, application manifest, or `upgrade.ps1` changes are part of this release.
 
 ## 0.12.5 (devel)
 - Fixed the temporary batch launcher so the repository path assigned inside the `--temp-launcher` parenthesized block is read with delayed expansion (`!REPO_DIR!`) instead of stale `%REPO_DIR%` expansion.
