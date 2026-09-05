@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.12.12 (devel)
+- Removed the legacy hard-coded application target `vp` from the generic SUM runtime. Normal application VPP messages sent through SUB now omit `recipient` and rely on SUB to resolve the destination from the authenticated Socket Box and routing table according to VPP v1.
+- Kept explicit `recipient: "server"` for SUB transport calls and explicit recipients for correlated replies/acknowledgements. Incoming application traffic is accepted from the routed peer Socket Box instead of requiring a hard-coded peer name.
+- SUM now learns the routed peer Socket Box from valid incoming application traffic and uses that learned identity only for peer-health diagnostics/heartbeat lookup; it is not used to choose the outgoing route. Application delivery no longer depends on a hard-coded peer being reported connected before SUM can hand traffic to SUB.
+- Bumped SUM runtime/package/Companion versions to 0.12.12. No application manifest or updater changes are part of this release.
+
 ## 0.12.11 (devel)
 - Changed the SUM WebSocket transport URL to the generic SUB Socket Box endpoint `/mailbox/<Socket Box>` instead of the legacy direct `/<Socket Box>` path. For example, `Socket Box = shpc-bc` now connects to `ws://<host>:<port>/mailbox/shpc-bc`.
 - Added manifest schema validation support for native JSON boolean values so declarative events such as SylphyHornPlusCon `desktopStateChanged` can carry real `true` / `false` fields without being rejected by SUM.
