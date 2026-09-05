@@ -8,7 +8,7 @@ VoicePrompterBridge is primarily a transport layer. It authenticates connections
 
 ## Common envelope
 
-Every VPP message MUST contain `protocolVersion`, unique `id`, `type`, `from`, `recipient`, `source`, and `timestamp`.
+Every VPP message MUST contain `protocolVersion`, unique `id`, `type`, `from`, `source`, and `timestamp`. `recipient` is part of the VPP envelope but MAY be omitted for application traffic only when the active transport can resolve the destination deterministically under the rules below. Messages addressed to `server` MUST always contain explicit `recipient: "server"`.
 
 ```json
 {
@@ -24,9 +24,25 @@ Every VPP message MUST contain `protocolVersion`, unique `id`, `type`, `from`, `
 
 SUB uses dynamically configured transport **Socket Boxes**. `server` is a reserved routing name representing SUB itself and is not a Socket Box. `vp` and `bc` are the concrete Socket Box names currently used by VoicePrompter and VPM; they are not the only Socket Box names permitted by VPP v1. Parts of this document may use the legacy word *mailbox* for a Socket Box; both terms refer to the same generic transport destination.
 
-`from` MUST match the authenticated Socket Box through which the message was received. Messages addressed to a Socket Box MUST be routed only to that Socket Box according to the multi-connection routing rules defined below. Messages addressed to `server` MUST be consumed by SUB and MUST NOT be forwarded. `source` is diagnostic metadata and is distinct from routing identity. `id` uniquely identifies one message and MUST NOT be reused; UUIDv7 is preferred.
+`from` MUST match the authenticated Socket Box through which the message was received when VPP is transported through SUB. Messages with an explicit or SUB-resolved Socket Box recipient MUST be routed only to that Socket Box according to the routing and multi-connection rules defined below. Messages addressed to `server` MUST be consumed by SUB and MUST NOT be forwarded. `source` is diagnostic metadata and is distinct from routing identity. `id` uniquely identifies one message and MUST NOT be reused; UUIDv7 is preferred.
 
-Application messages MAY contain optional transport metadata `targetConnectionId`. When present, it MUST be a non-empty SUB-generated connection identifier belonging to the Socket Box named by `recipient`; its routing semantics are defined under **Multi-connection Socket Box routing** below. Application code MUST NOT interpret `targetConnectionId` as application data.
+### Recipient resolution and SUB routing
+
+VPP is not limited to SUB transport. An explicit `recipient` therefore remains a valid and portable part of the VPP envelope and MAY be supplied by the sender whenever the destination is already known.
+
+When VPP application traffic is transported through SUB, the sender MAY omit `recipient`. In that case SUB MUST resolve the destination from the authenticated sender Socket Box and SUB's routing table before queueing or forwarding the message. The routing decision MUST be transport-generic and MUST NOT be inferred from application names, `source.app`, manifest metadata, Socket Box naming conventions, or other application-specific knowledge.
+
+Automatic recipient resolution succeeds only when the routing table yields exactly one permitted destination Socket Box for the authenticated sender Socket Box. SUB then treats that destination as the effective `recipient` for all subsequent routing, queueing, correlation, and multi-connection processing.
+
+If no permitted destination exists, SUB MUST reject the message with `INVALID_ROUTING` when a correlated transport error can be returned. If more than one permitted destination exists and the sender omitted `recipient`, SUB MUST NOT choose arbitrarily and MUST reject the message with `AMBIGUOUS_RECIPIENT` when a correlated transport error can be returned.
+
+If the sender supplies `recipient` explicitly, SUB MUST validate that destination against the routing table for the authenticated sender Socket Box. An explicitly supplied destination that is not permitted by that routing table MUST be rejected with `INVALID_ROUTING`; explicitly naming a Socket Box never bypasses SUB routing policy.
+
+Before an application message leaves SUB toward a destination connection or is stored in a destination queue, it MUST have one concrete effective recipient, either supplied by the sender and validated by SUB or resolved by SUB from its routing table. Recipient omission is therefore an input convenience at the SUB boundary, not a recipient-less forwarded-message state.
+
+For direct VPP communication without SUB, the sender SHOULD include `recipient` explicitly unless that transport provides an equivalent deterministic destination-resolution mechanism. When no intermediary transport can determine the destination, `recipient` is required. This preserves direct VPP use cases such as SUM communicating directly with another VPP-capable application while keeping SUB-specific routing knowledge out of SUM and other generic clients.
+
+Application messages MAY contain optional transport metadata `targetConnectionId`. When present, it MUST be a non-empty SUB-generated connection identifier belonging to the effective recipient Socket Box. If `recipient` was omitted, SUB MUST resolve the recipient first and then validate `targetConnectionId` against that resolved Socket Box. Its routing semantics are defined under **Multi-connection Socket Box routing** below. Application code MUST NOT interpret `targetConnectionId` as application data.
 
 ## Correlation and acknowledgements
 
@@ -846,9 +862,9 @@ A client displaced with `reason: "replaced"` MAY subsequently reconnect. Such a 
 
 ## Multi-connection Socket Box routing
 
-A Socket Box can have between zero and `maxConnections` admitted active connections. Routing to a Socket Box MUST therefore be deterministic when more than one connection is active.
+A Socket Box can have between zero and `maxConnections` admitted active connections. Routing to a Socket Box MUST therefore be deterministic when more than one connection is active. For SUB traffic, this section applies after the effective recipient Socket Box has been explicitly validated or automatically resolved under **Recipient resolution and SUB routing**.
 
-`targetConnectionId` is optional generic transport metadata in an application message. When present, SUB MUST deliver the message only to that exact active connection, and that connection MUST belong to the Socket Box named by `recipient`. If the ID is not an active connection of that recipient Socket Box, SUB MUST NOT reroute the message to another connection and SHOULD return `CONNECTION_NOT_FOUND` when a correlated transport error can be delivered to the sender.
+`targetConnectionId` is optional generic transport metadata in an application message. When present, SUB MUST deliver the message only to that exact active connection, and that connection MUST belong to the effective recipient Socket Box. If the ID is not an active connection of that recipient Socket Box, SUB MUST NOT reroute the message to another connection and SHOULD return `CONNECTION_NOT_FOUND` when a correlated transport error can be delivered to the sender.
 
 When `targetConnectionId` is absent:
 
@@ -905,7 +921,7 @@ System `ping` calls addressed to `server` are consumed immediately by the server
 
 ## VPBridge transport rule
 
-SUB authenticates according to transport configuration, performs generic Socket Box connection registration/admission/replacement negotiation, accepts complete syntactically valid JSON, verifies routing envelope fields, routes dynamic Socket Box messages according to the deterministic multi-connection rules and FIFO/buffer rules including generic `targetConnectionId` and `queue` metadata, consumes `server` messages locally, maintains Socket Box connection state, and rejects invalid JSON diagnostically.
+SUB authenticates according to transport configuration, performs generic Socket Box connection registration/admission/replacement negotiation, accepts complete syntactically valid JSON, verifies routing envelope fields, resolves an omitted application `recipient` from the authenticated sender Socket Box and routing table when that resolution is unambiguous, validates explicit recipients against the same routing table, routes dynamic Socket Box messages according to the deterministic multi-connection rules and FIFO/buffer rules including generic `targetConnectionId` and `queue` metadata, consumes `server` messages locally, maintains Socket Box connection state, and rejects invalid JSON diagnostically.
 
 Except for routing, explicit server methods, generic connection admission/replacement management, generic correlation routing, generic queue-policy enforcement, and its own transport `disconnecting` events, SUB SHALL NOT interpret application-level methods, marker commands, Status Bar data, application arguments, results, progress data, or application errors.
 
