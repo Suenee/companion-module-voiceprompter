@@ -6,7 +6,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const MODULE_VERSION = '0.12.11'
+const MODULE_VERSION = '0.12.12'
 const SUPPORTED_MANIFEST_VERSION = 1
 const DEFAULT_HOST = '127.0.0.1'
 const DEFAULT_PORT = 8170
@@ -15,7 +15,6 @@ const RECONNECT_MS = 2000
 const DEFAULT_HEARTBEAT_MS = 30000
 const HEARTBEAT_GRACE_MS = 5000
 const GRACEFUL_DISCONNECT_FLUSH_MS = 150
-const TARGET_MAILBOX = 'vp'
 const SERVER_MAILBOX = 'server'
 const SERVER_DISCONNECT_REASONS = new Set(['shutdown', 'restart', 'exit', 'replaced', 'negotiationTimeout'])
 const DIAGNOSTIC_ICONS = { green: '🟢', yellow: '🟡', red: '🔴', gray: '⚪' }
@@ -130,6 +129,7 @@ class SocketUniverseInstance extends InstanceBase {
   heartbeatIntervalMs = DEFAULT_HEARTBEAT_MS
   lastActivityAt = Date.now()
   peerConnected = false
+  peerSocketBox = null
   serverDisconnectReason = null
   lastMarkerCommand = ''
   lastMarkerArgs = []
@@ -325,7 +325,7 @@ class SocketUniverseInstance extends InstanceBase {
       id: uuidV7(),
       type,
       from: this.getLocalSocketBox(),
-      recipient,
+      ...(recipient ? { recipient } : {}),
       ...extra,
       source: recipient === SERVER_MAILBOX ? this.transportSourceInfo() : this.sourceInfo(),
       timestamp: new Date().toISOString(),
@@ -338,19 +338,20 @@ class SocketUniverseInstance extends InstanceBase {
   }
 
   makeCall(method, args, expectsResponse, queue) {
-    return this.envelope('call', TARGET_MAILBOX, this.withQueue({ method, args, expectsResponse }, queue))
+    return this.envelope('call', undefined, this.withQueue({ method, args, expectsResponse }, queue))
   }
 
   sendVpp(msg) {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) throw new Error('SUB is not connected')
-    if (msg.recipient !== SERVER_MAILBOX && this.admissionState !== 'admitted') throw new Error(`Socket Box "${this.getLocalSocketBox()}" is not admitted`)
+    const isServerMessage = msg.recipient === SERVER_MAILBOX
+    if (!isServerMessage && this.admissionState !== 'admitted') throw new Error(`Socket Box "${this.getLocalSocketBox()}" is not admitted`)
     this.ws.send(JSON.stringify(msg))
-    if (msg.recipient === TARGET_MAILBOX) this.setRoleValues({ lastSent: new Date().toISOString() })
+    if (!isServerMessage) this.setRoleValues({ lastSent: new Date().toISOString() })
     if (this.config?.debug) this.log('debug', `TX VPP ${JSON.stringify(msg)}`)
   }
 
   sendToPeerIfAvailable(msg) {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN || this.admissionState !== 'admitted' || !this.peerConnected) return false
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN || this.admissionState !== 'admitted') return false
     this.sendVpp(msg)
     return true
   }
@@ -723,6 +724,7 @@ class SocketUniverseInstance extends InstanceBase {
     this.admissionInfo = null
     this.settingsSnapshotPendingId = null
     this.settingsSnapshotSynced = false
+    this.peerSocketBox = null
     const { apiKey, cname } = this.getConnectionSettings()
     const target = `Connecting to ${this.getDisplayUrl()}`
     this.setHealth('gray', target, InstanceStatus.Connecting)
@@ -843,6 +845,7 @@ class SocketUniverseInstance extends InstanceBase {
   setDisconnected() {
     this.stopHeartbeat()
     this.peerConnected = false
+    this.peerSocketBox = null
     this.registrationPendingId = null
     this.admissionState = 'disconnected'
     this.admissionInfo = null
@@ -881,7 +884,7 @@ class SocketUniverseInstance extends InstanceBase {
   applyPingResponse(m) {
     const result = isObject(m.result) ? m.result : {}
     const socketBoxes = isObject(result.socketBoxes) ? result.socketBoxes : (isObject(result.mailboxes) ? result.mailboxes : {})
-    const peer = isObject(socketBoxes[TARGET_MAILBOX]) ? socketBoxes[TARGET_MAILBOX] : {}
+    const peer = this.peerSocketBox && isObject(socketBoxes[this.peerSocketBox]) ? socketBoxes[this.peerSocketBox] : null
     const hb = isObject(result.heartbeat) ? result.heartbeat : {}
     const interval = Number(hb.intervalMs)
     if (Number.isInteger(interval) && interval >= 5000 && interval <= 3600000) this.heartbeatIntervalMs = interval
@@ -892,7 +895,7 @@ class SocketUniverseInstance extends InstanceBase {
       return
     }
     const wasConnected = this.peerConnected
-    this.peerConnected = peer.connected === true
+    this.peerConnected = peer?.connected === true
     if (!this.peerConnected) { this.settingsSnapshotPendingId = null; this.settingsSnapshotSynced = false }
     this.setRoleValues({ peerConnected: this.peerConnected ? 1 : 0, heartbeatInterval: this.heartbeatIntervalMs })
     this.updateConnectionStatus()
@@ -910,7 +913,8 @@ class SocketUniverseInstance extends InstanceBase {
       this.setHealth('green', `SUB + ${this.manifest.peerLabel} connected`, InstanceStatus.Ok)
     } else {
       this.setRoleValues({ connectionState: 'bridge-only', peerConnected: 0 })
-      this.setHealth('yellow', `SUB connected; ${this.manifest.peerLabel} not connected`, InstanceStatus.UnknownWarning ?? InstanceStatus.Ok)
+      const reason = this.peerSocketBox ? `SUB connected; ${this.manifest.peerLabel} not connected` : `SUB connected; ${this.manifest.peerLabel} route not yet observed`
+      this.setHealth('yellow', reason, InstanceStatus.UnknownWarning ?? InstanceStatus.Ok)
     }
   }
 
@@ -927,8 +931,10 @@ class SocketUniverseInstance extends InstanceBase {
     else if (this.ws?.readyState === WebSocket.OPEN) server = `${DIAGNOSTIC_ICONS.green} Connected`
     else if (level === 'gray') server = `${DIAGNOSTIC_ICONS.gray} Connecting / unknown`
     else server = `${DIAGNOSTIC_ICONS.red} Disconnected`
-    if (this.ws?.readyState === WebSocket.OPEN && this.admissionState === 'admitted') peer = this.peerConnected ? `${DIAGNOSTIC_ICONS.green} Connected` : `${DIAGNOSTIC_ICONS.yellow} Disconnected`
-    else peer = `${DIAGNOSTIC_ICONS.gray} Unknown`
+    if (this.ws?.readyState === WebSocket.OPEN && this.admissionState === 'admitted') {
+      if (!this.peerSocketBox) peer = `${DIAGNOSTIC_ICONS.gray} Unknown`
+      else peer = this.peerConnected ? `${DIAGNOSTIC_ICONS.green} Connected` : `${DIAGNOSTIC_ICONS.yellow} Disconnected`
+    } else peer = `${DIAGNOSTIC_ICONS.gray} Unknown`
     return { server, peer }
   }
 
@@ -944,7 +950,7 @@ class SocketUniverseInstance extends InstanceBase {
   async announceDisconnecting(reason = 'user') {
     const s = this.ws
     if (!s || s.readyState !== WebSocket.OPEN || !this.manifest || this.admissionState !== 'admitted') return
-    const msg = this.envelope('event', TARGET_MAILBOX, { event: 'disconnecting', args: { reason }, expectsResponse: false, queue: { policy: 'fifo' } })
+    const msg = this.envelope('event', undefined, { event: 'disconnecting', args: { reason }, expectsResponse: false, queue: { policy: 'fifo' } })
     const payload = JSON.stringify(msg)
     this.setRoleValues({ lastSent: new Date().toISOString() })
     if (this.config?.debug) this.log('debug', `TX VPP ${payload}`)
@@ -969,8 +975,9 @@ class SocketUniverseInstance extends InstanceBase {
     if (typeof m.id !== 'string' || !m.id) return 'Missing message id'
     if (typeof m.type !== 'string') return 'Missing message type'
     if (!['call', 'event', 'progress', 'response', 'error'].includes(m.type)) return `Unknown message type "${m.type}"`
-    if (![TARGET_MAILBOX, SERVER_MAILBOX].includes(m.from)) return `Invalid from "${m.from}"`
+    if (typeof m.from !== 'string' || !m.from.trim()) return 'Missing or invalid from'
     const local = this.getLocalSocketBox()
+    if (m.from === local) return 'Message from must not match the local Socket Box'
     if (m.recipient !== local) return `Message recipient must be "${local}"`
     if (!isObject(m.source)) return 'Missing or invalid source'
     if (typeof m.timestamp !== 'string' || !m.timestamp.trim()) return 'Missing or invalid timestamp'
@@ -984,8 +991,9 @@ class SocketUniverseInstance extends InstanceBase {
   }
 
   markValidPeerActivity(m) {
-    if (m.from !== TARGET_MAILBOX || this.admissionState !== 'admitted') return
+    if (m.from === SERVER_MAILBOX || m.from === this.getLocalSocketBox() || this.admissionState !== 'admitted') return
     const wasConnected = this.peerConnected
+    this.peerSocketBox = m.from
     this.lastActivityAt = Date.now()
     this.peerConnected = true
     this.updateConnectionStatus()
@@ -1057,7 +1065,7 @@ class SocketUniverseInstance extends InstanceBase {
     if (spec.expectsResponse === false && m.expectsResponse === true) return { handled: true, valid: false, error: 'Event requires expectsResponse:false' }
 
     if (spec.operation === 'marker') {
-      if (m.from !== TARGET_MAILBOX || typeof m.command !== 'string' || !m.command.trim() || !Array.isArray(m.args)) return { handled: true, valid: false, error: 'Invalid marker event' }
+      if (typeof m.command !== 'string' || !m.command.trim() || !Array.isArray(m.args)) return { handled: true, valid: false, error: 'Invalid marker event' }
       for (const a of m.args) if (!['string', 'number'].includes(typeof a) || (typeof a === 'number' && !Number.isFinite(a))) return { handled: true, valid: false, error: 'Invalid marker argument', code: 'INVALID_ARGUMENT' }
       this.lastMarkerCommand = m.command
       this.lastMarkerArgs = [...m.args]
@@ -1066,7 +1074,7 @@ class SocketUniverseInstance extends InstanceBase {
     }
 
     if (spec.operation === 'mapArgsToVariables') {
-      if (m.from !== TARGET_MAILBOX || !this.validateArgsAgainstSchema(m.args, spec.args)) return { handled: true, valid: false, error: `Invalid ${m.event} event` }
+      if (!this.validateArgsAgainstSchema(m.args, spec.args)) return { handled: true, valid: false, error: `Invalid ${m.event} event` }
       const values = {}
       for (const [arg, variableId] of Object.entries(spec.map ?? {})) values[variableId] = m.args[arg]
       this.setVariableValues(values)
@@ -1074,12 +1082,12 @@ class SocketUniverseInstance extends InstanceBase {
     }
 
     if (spec.operation === 'settingChanged') {
-      if (m.from !== TARGET_MAILBOX || !isObject(m.args) || !hasOnlyKeys(m.args, ['setting', 'value']) || typeof m.args.setting !== 'string' || !this.applySetting(m.args.setting, m.args.value)) return { handled: true, valid: false, error: 'Invalid settingChanged event' }
+      if (!isObject(m.args) || !hasOnlyKeys(m.args, ['setting', 'value']) || typeof m.args.setting !== 'string' || !this.applySetting(m.args.setting, m.args.value)) return { handled: true, valid: false, error: 'Invalid settingChanged event' }
       return { handled: true, valid: true }
     }
 
     if (spec.operation === 'memoryUpdateAndReplay') {
-      if (m.from !== TARGET_MAILBOX || !this.validateArgsAgainstSchema(m.args, spec.args)) return { handled: true, valid: false, error: `Invalid ${m.event} event` }
+      if (!this.validateArgsAgainstSchema(m.args, spec.args)) return { handled: true, valid: false, error: `Invalid ${m.event} event` }
       this.markValidPeerActivity(m)
       setPath(this.runtimeMemory, spec.memoryPath, m.args[spec.fromArg])
       this.publishMemoryForPath(spec.memoryPath)
@@ -1089,7 +1097,7 @@ class SocketUniverseInstance extends InstanceBase {
     }
 
     if (spec.operation === 'memorySyncRequest') {
-      if (m.from !== TARGET_MAILBOX || !this.validateArgsAgainstSchema(m.args, spec.args) || m.expectsResponse !== true) return { handled: true, valid: false, error: `Invalid ${m.event} event` }
+      if (!this.validateArgsAgainstSchema(m.args, spec.args) || m.expectsResponse !== true) return { handled: true, valid: false, error: `Invalid ${m.event} event` }
       this.markValidPeerActivity(m)
       const current = getPath(this.runtimeMemory, spec.bootstrap.memoryPath)
       if (!spec.bootstrap.onlyIfNull || current == null) {
@@ -1126,6 +1134,8 @@ class SocketUniverseInstance extends InstanceBase {
       return
     }
 
+    if (m.from !== SERVER_MAILBOX) this.markValidPeerActivity(m)
+
     if (this.pendingPingId && m.from === SERVER_MAILBOX && m.correlationId === this.pendingPingId && (m.type === 'response' || m.type === 'error')) {
       if (this.heartbeatTimeout) { clearTimeout(this.heartbeatTimeout); this.heartbeatTimeout = null }
       this.pendingPingId = null
@@ -1137,7 +1147,7 @@ class SocketUniverseInstance extends InstanceBase {
       this.settingsSnapshotPendingId = null
       this.settingsSnapshotSynced = false
     }
-    if (m.from === TARGET_MAILBOX && m.type === 'response') this.handleSettingsResponse(m)
+    if (m.from !== SERVER_MAILBOX && m.type === 'response') this.handleSettingsResponse(m)
 
     let argOffset = ''
     let eventAckHandled = false
@@ -1151,7 +1161,7 @@ class SocketUniverseInstance extends InstanceBase {
           this.protocolFailure('Invalid disconnecting event', raw); return
         }
         const reason = m.args.reason
-        if (m.from === TARGET_MAILBOX) {
+        if (m.from !== SERVER_MAILBOX) {
           if (reason !== 'user') { if (m.expectsResponse === true) this.sendError(m, 'INVALID_ARGUMENT', 'Invalid peer disconnecting reason'); this.protocolFailure('Invalid peer disconnecting reason', raw); return }
           isPeerDisconnecting = true
           this.peerConnected = false
@@ -1191,7 +1201,7 @@ class SocketUniverseInstance extends InstanceBase {
       if (m.expectsResponse === true) this.sendError(m, 'UNKNOWN_METHOD', `SUM has no public method "${m.method}"`)
     }
 
-    if (m.from === TARGET_MAILBOX && !isPeerDisconnecting) this.markValidPeerActivity(m)
+    if (isPeerDisconnecting) this.peerConnected = false
 
     const source = m.source
     const error = isObject(m.error) ? m.error : {}
