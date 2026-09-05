@@ -37,7 +37,7 @@
 - Removed the failing `git cat-file -e HEAD:upgrade.ps1` migration probe that Windows PowerShell 5.1 could promote to a terminating error under `$ErrorActionPreference = 'Stop'`.
 - A locally dirty `upgrade.cmd` is now accepted only when Git semantics confirm that its working-tree content already matches `origin/devel`; arbitrary local launcher edits still abort the upgrade instead of being overwritten.
 - The temporary runner then synchronizes `devel`, verifies `HEAD == origin/devel`, installs dependencies, builds, and verifies synchronized SUM versions as before.
-- Bumped SUM runtime/package/Companion versions to 0.12.6. No VPP, application manifest, or `upgrade.ps1` changes are part of this release.
+- Bumped SUM runtime/package/Companion versions to 0.12.6. No VPP or application manifest changes are part of this release.
 
 ## 0.12.5 (devel)
 - Fixed the temporary batch launcher so the repository path assigned inside the `--temp-launcher` parenthesized block is read with delayed expansion (`!REPO_DIR!`) instead of stale `%REPO_DIR%` expansion.
