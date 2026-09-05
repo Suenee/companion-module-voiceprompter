@@ -1196,7 +1196,6 @@ class SocketUniverseInstance extends InstanceBase {
     const source = m.source
     const error = isObject(m.error) ? m.error : {}
     const callArgs = m.type === 'call' && isObject(m.args) ? m.args : {}
-    let argOffset = ''
     if (callArgs.offset !== undefined) argOffset = jsonValue(callArgs.offset)
     this.setRoleValues({
       protocolVersion: this.manifest.vppVersion, messageId: m.id, correlationId: m.correlationId ?? '', messageType: m.type, from: m.from, recipient: m.recipient,
