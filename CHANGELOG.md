@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.12.13 (devel)
+- Fixed manifest-specific connection fields so `Manifest = None` shows no application-specific configuration fields, while each selected manifest shows only its own declared `configFields`.
+- Added a read-only `SUM Version` row to the connection editor so the actually loaded runtime version is visible even when Companion labels the module source simply as `Dev`.
+- Bumped SUM runtime/package/Companion versions to 0.12.13. No VPP, application manifest, or updater changes are part of this release.
+
 ## 0.12.12 (devel)
 - Removed the legacy hard-coded application target `vp` from the generic SUM runtime. Normal application VPP messages sent through SUB now omit `recipient` and rely on SUB to resolve the destination from the authenticated Socket Box and routing table according to VPP v1.
 - Kept explicit `recipient: "server"` for SUB transport calls and explicit recipients for correlated replies/acknowledgements. Incoming application traffic is accepted from the routed peer Socket Box instead of requiring a hard-coded peer name.
