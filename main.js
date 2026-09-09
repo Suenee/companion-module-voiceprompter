@@ -6,7 +6,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const MODULE_VERSION = '0.12.12'
+const MODULE_VERSION = '0.12.13'
 const SUPPORTED_MANIFEST_VERSION = 1
 const DEFAULT_HOST = '127.0.0.1'
 const DEFAULT_PORT = 8170
@@ -269,6 +269,7 @@ class SocketUniverseInstance extends InstanceBase {
   getConfigFields() {
     const choices = [{ id: 'none', label: 'None' }, ...[...MANIFESTS.values()].map((m) => ({ id: m.id, label: `${m.name} (${m.version})` }))]
     const fields = [
+      { type: 'static-text', id: 'sumVersion', label: 'SUM Version', width: 12, value: MODULE_VERSION },
       { type: 'dropdown', id: 'manifest', label: 'Manifest', width: 12, default: 'none', choices, tooltip: 'Required. Select the application communication manifest. SUM does not connect when None is selected.' },
       { type: 'textinput', id: 'host', label: 'IP Address', width: 8, default: DEFAULT_HOST, required: true, minLength: 1 },
       { type: 'number', id: 'port', label: 'Port', width: 4, default: DEFAULT_PORT, min: 1, max: 65535, step: 1, required: true },
@@ -276,7 +277,7 @@ class SocketUniverseInstance extends InstanceBase {
       { type: 'textinput', id: 'apiKey', label: 'API Key', width: 12, default: '', tooltip: 'API key used by the Socket Universe Bridge/Server connection.' },
     ]
     const selected = MANIFESTS.get(this.config?.manifest)
-    const manifestFields = selected?.configFields ?? [...MANIFESTS.values()].flatMap((m) => m.configFields ?? [])
+    const manifestFields = selected?.configFields ?? []
     const seen = new Set()
     for (const field of manifestFields) {
       if (seen.has(field.id)) continue
