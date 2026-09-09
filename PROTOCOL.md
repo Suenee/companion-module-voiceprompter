@@ -48,6 +48,22 @@ Application messages MAY contain optional transport metadata `targetConnectionId
 
 A message related to a previous message MUST contain `correlationId` equal to the original message's `id`. Any VPP message with `expectsResponse: true` creates a request and MUST terminate with exactly one correlated `response` or `error`. Zero or more correlated `progress` messages MAY precede it. Receipt of valid traffic from an opposite application Socket Box is proof of life and refreshes the peer-activity timer.
 
+## Authoritative application state initialization
+
+When a VPP-capable application owns runtime state that a peer needs in order to initialize its controls, variables, feedback, or other application view, the state-owning application is authoritative for that state. A generic peer such as SUM MUST NOT invent, guess, reconstruct, or infer that application state merely from transport connectivity, Socket Box names, manifest names, heartbeat results, or the absence of application traffic.
+
+After a connection becomes admitted and capable of normal application traffic, the state-owning application SHOULD actively publish its current authoritative state to the peer using the application-specific event, snapshot, synchronization request, or equivalent message defined by that application's VPP contract. If the peer cannot become correctly initialized without that state, the application MUST perform this initial state publication rather than waiting for an unrelated future state change.
+
+The initial publication MUST represent the application's actual current effective state at the time the message is created. It MUST NOT be a fabricated default used only to make the peer appear connected. The application MAY use an already-defined normal state-change event for the initial snapshot when that event's schema completely represents the required state; VPP does not require a universal generic startup-state event name.
+
+A successful transport `ping`, Socket Box admission, or heartbeat confirmation proves only transport health and availability. It is not application state synchronization and MUST NOT be treated as a substitute for the initial authoritative state publication.
+
+After a reconnect, restart, replacement admission, or any other new admission where the peer may have lost its previous runtime knowledge, the state-owning application SHOULD publish the current authoritative state again. A receiving controller SHOULD treat this valid application message as current state and may also use it as proof of peer application activity.
+
+When this startup state is sent through SUB, normal recipient-resolution rules apply: the application MAY omit `recipient` and allow SUB to resolve the destination from the authenticated Socket Box and routing table. Neither the application nor SUM should hard-code a peer Socket Box name merely to perform state initialization.
+
+This rule describes state ownership, not transport ownership. SUB continues to route and queue generically and MUST NOT synthesize, interpret, or modify the application's state snapshot.
+
 ## call
 
 `call` requests execution of a public protocol method. `args` MUST be a JSON object. Each method has a deterministic argument schema.
