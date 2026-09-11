@@ -6,7 +6,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const MODULE_VERSION = '0.12.13'
+const MODULE_VERSION = '0.12.14'
 const SUPPORTED_MANIFEST_VERSION = 1
 const DEFAULT_HOST = '127.0.0.1'
 const DEFAULT_PORT = 8170
@@ -18,7 +18,7 @@ const GRACEFUL_DISCONNECT_FLUSH_MS = 150
 const SERVER_MAILBOX = 'server'
 const SERVER_DISCONNECT_REASONS = new Set(['shutdown', 'restart', 'exit', 'replaced', 'negotiationTimeout'])
 const DIAGNOSTIC_ICONS = { green: '🟢', yellow: '🟡', red: '🔴', gray: '⚪' }
-const MANIFEST_DIR = join(dirname(fileURLToPath(import.meta.url)), 'manifest')
+const MANIFEST_DIR = join(dirname(fileURLToPath(import.meta.url)), 'manifests')
 
 function uuidV7() {
   const b = randomBytes(16)
@@ -95,7 +95,7 @@ function validateManifest(manifest, filename) {
 function loadManifestCatalog() {
   const catalog = new Map()
   let files = []
-  try { files = readdirSync(MANIFEST_DIR).filter((f) => f.endsWith('.json')).sort() } catch { return catalog }
+  try { files = readdirSync(MANIFEST_DIR).filter((f) => f.endsWith('.json') && f !== 'manifests-list.json').sort() } catch { return catalog }
   for (const filename of files) {
     try {
       const manifest = validateManifest(JSON.parse(readFileSync(join(MANIFEST_DIR, filename), 'utf8')), filename)
@@ -269,7 +269,6 @@ class SocketUniverseInstance extends InstanceBase {
   getConfigFields() {
     const choices = [{ id: 'none', label: 'None' }, ...[...MANIFESTS.values()].map((m) => ({ id: m.id, label: `${m.name} (${m.version})` }))]
     const fields = [
-      { type: 'static-text', id: 'sumVersion', label: 'SUM Version', width: 12, value: MODULE_VERSION },
       { type: 'dropdown', id: 'manifest', label: 'Manifest', width: 12, default: 'none', choices, tooltip: 'Required. Select the application communication manifest. SUM does not connect when None is selected.' },
       { type: 'textinput', id: 'host', label: 'IP Address', width: 8, default: DEFAULT_HOST, required: true, minLength: 1 },
       { type: 'number', id: 'port', label: 'Port', width: 4, default: DEFAULT_PORT, min: 1, max: 65535, step: 1, required: true },
@@ -285,6 +284,7 @@ class SocketUniverseInstance extends InstanceBase {
       fields.push(deepClone(field))
     }
     fields.push({ type: 'checkbox', id: 'debug', label: 'Debug incoming messages', width: 6, default: false })
+    fields.push({ type: 'static-text', id: 'sumVersion', label: 'SUM Version', width: 12, value: MODULE_VERSION })
     return fields
   }
 
