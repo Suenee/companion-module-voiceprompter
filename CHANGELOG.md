@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.12.15 (devel)
+- Added `manifests/MANIFEST.md` as the authoritative SUM application-manifest authoring guide, based on the current VoicePrompter and SylphyHornPlusCon manifests.
+- Documented manifest responsibilities, ownership, identity fields, configuration fields, variables, settings, runtime memory, events, actions, queue policies, replays, presets, naming, versioning, and canonical-source rules.
+- Defined the manifest-side contract for dynamic runtime collections and dynamic Companion dropdowns, including `dynamicCollections`, `choicesFrom`, stable stored values, label mapping, missing-value behavior, and event-driven refresh expectations.
+- Documented that authoritative dynamic collections must publish a complete current snapshot after admission/reconnect before SUM treats them as initialized; later updates are normally sent on change, with optional explicit resynchronization.
+- Bumped SUM runtime/package/Companion versions to 0.12.15. No runtime implementation of dynamic collections is included in this release; the document defines the manifest contract for subsequent implementation.
+
 ## 0.12.14 (devel)
 - Renamed the SUM application-manifest cache directory from `manifest` to `manifests` and added `manifests/manifests-list.json` as the registry of canonical application-owned manifest sources.
 - SUM now loads cached manifests from `manifests/` while ignoring the registry file itself. The cached VoicePrompter manifest is sourced from `Suenee/VoicePrompter/devel/manifest/voiceprompter.json`, and SylphyHornPlusCon from `Suenee/SylphyHornPlusCon/devel/manifest/sylphyhornpluscon.json`.
