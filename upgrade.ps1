@@ -8,7 +8,7 @@ $ProgressPreference = 'SilentlyContinue'
 
 $RepoUrl = 'https://github.com/Suenee/companion-module-voiceprompter.git'
 $Branch = 'devel'
-$UpdaterRevision = '10'
+$UpdaterRevision = '11'
 $RepoDir = [System.IO.Path]::GetFullPath($RepoDir).TrimEnd('\')
 $LogDir = Join-Path $RepoDir 'logs'
 $LogFile = Join-Path $LogDir 'upgrade.log'
@@ -136,21 +136,6 @@ function Get-TrackedChanges {
     return $paths | Sort-Object -Unique
 }
 
-function Test-ManifestFile {
-    param(
-        [Parameter(Mandatory = $true)][string]$Path,
-        [Parameter(Mandatory = $true)][string]$ExpectedId
-    )
-    if (-not (Test-Path -LiteralPath $Path)) { return $false }
-    try {
-        $manifest = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
-        return ([int]$manifest.manifestVersion -eq 1 -and [string]$manifest.id -eq $ExpectedId)
-    }
-    catch {
-        return $false
-    }
-}
-
 try {
     New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
     Set-Content -LiteralPath $LogFile -Value '' -Encoding UTF8
@@ -231,42 +216,12 @@ try {
         Write-Log "Synchronized commit: $head"
 
         Set-Phase 'MANIFESTS'
-        $manifestDir = Join-Path $RepoDir 'manifests'
-        $manifestListPath = Join-Path $manifestDir 'manifests-list.json'
-        if (-not (Test-Path -LiteralPath $manifestListPath)) { Fail 'manifests/manifests-list.json is missing after synchronization.' }
-        $manifestList = Get-Content -LiteralPath $manifestListPath -Raw | ConvertFrom-Json
-        if ([int]$manifestList.listVersion -ne 1 -or $null -eq $manifestList.manifests) { Fail 'Invalid manifests-list.json.' }
-        New-Item -ItemType Directory -Force -Path $manifestDir | Out-Null
-
-        foreach ($entry in @($manifestList.manifests)) {
-            $manifestId = [string]$entry.id
-            $manifestFile = [string]$entry.file
-            $manifestUrl = [string]$entry.url
-            if (-not $manifestId -or -not $manifestFile -or -not $manifestUrl) { Fail 'Manifest registry entry is missing id, file, or url.' }
-            if ([System.IO.Path]::GetFileName($manifestFile) -ne $manifestFile -or -not $manifestFile.EndsWith('.json', [StringComparison]::OrdinalIgnoreCase)) {
-                Fail "Invalid manifest cache filename '$manifestFile'."
-            }
-
-            $target = Join-Path $manifestDir $manifestFile
-            $temp = "$target.download"
-            try {
-                if (Test-Path -LiteralPath $temp) { Remove-Item -LiteralPath $temp -Force }
-                Invoke-WebRequest -Uri $manifestUrl -OutFile $temp -UseBasicParsing
-                if (-not (Test-ManifestFile -Path $temp -ExpectedId $manifestId)) { Fail "Downloaded manifest '$manifestId' failed validation." }
-                Move-Item -LiteralPath $temp -Destination $target -Force
-                Write-Log "Manifest synchronized: $manifestId -> manifests/$manifestFile"
-            }
-            catch {
-                if (Test-Path -LiteralPath $temp) { Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue }
-                if (Test-ManifestFile -Path $target -ExpectedId $manifestId) {
-                    $HadWarning = $true
-                    Write-Log "WARNING: Could not refresh manifest '$manifestId'; using cached manifests/$manifestFile. $($_.Exception.Message)" Yellow
-                }
-                else {
-                    throw
-                }
-            }
-        }
+        $manifestSyncScript = Join-Path $RepoDir 'tools\update-manifests.ps1'
+        if (-not (Test-Path -LiteralPath $manifestSyncScript)) { Fail 'tools/update-manifests.ps1 is missing after synchronization.' }
+        $powershellCommand = Get-Command powershell.exe -ErrorAction SilentlyContinue
+        if (-not $powershellCommand) { Fail 'powershell.exe is not available for manifest synchronization.' }
+        $manifestSync = Invoke-ExternalProcess -FilePath $powershellCommand.Source -Arguments @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $manifestSyncScript, '-RepoDir', $RepoDir)
+        if ($manifestSync.StdOut -match 'STATUS:\s+WARNING') { $HadWarning = $true }
 
         Set-Phase 'DEPENDENCIES'
         $nodeCommand = Get-Command node.exe -ErrorAction SilentlyContinue
@@ -295,16 +250,12 @@ try {
         if ([string]$package.version -ne [string]$manifest.version -or [string]$package.version -ne $mainVersion) {
             Fail "Version mismatch: package=$($package.version), companion=$($manifest.version), main=$mainVersion"
         }
-        foreach ($entry in @($manifestList.manifests)) {
-            $verifiedPath = Join-Path $manifestDir ([string]$entry.file)
-            if (-not (Test-ManifestFile -Path $verifiedPath -ExpectedId ([string]$entry.id))) {
-                Fail "Manifest verification failed for '$($entry.id)'."
-            }
-        }
         $ResultVersion = $mainVersion
         Write-Log "Verified SUM version: $mainVersion"
         if (-not (Test-Path -LiteralPath (Join-Path $RepoDir 'upgrade.cmd'))) { Fail 'upgrade.cmd is missing after synchronization.' }
         if (-not (Test-Path -LiteralPath (Join-Path $RepoDir 'upgrade.ps1'))) { Fail 'upgrade.ps1 is missing after synchronization.' }
+        if (-not (Test-Path -LiteralPath (Join-Path $RepoDir 'sync-manifests.cmd'))) { Fail 'sync-manifests.cmd is missing after synchronization.' }
+        if (-not (Test-Path -LiteralPath $manifestSyncScript)) { Fail 'tools/update-manifests.ps1 is missing after synchronization.' }
 
         Set-Phase 'COMPLETE'
         Write-Log "RESULT VERSION: $ResultVersion" $(if ($HadWarning) { 'Yellow' } else { 'Green' })
