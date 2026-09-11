@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.12.16 (devel)
+- Added standalone `sync-manifests.cmd` for refreshing the local SUM manifest cache without running a full module upgrade.
+- Added reusable `tools/update-manifests.ps1` as the single manifest synchronization implementation. It reads `manifests/manifests-list.json`, downloads each canonical manifest, validates `manifestVersion` and `id`, atomically replaces valid cache files, verifies all registered manifests, and falls back with a warning to an already-valid cached copy when a source is temporarily unavailable.
+- Refactored `upgrade.ps1` to call the same standalone manifest synchronization script instead of maintaining a second inline implementation. Updater revision is 11.
+- Bumped SUM runtime/package/Companion versions to 0.12.16. No VPP protocol or application-manifest contract change is part of this release.
+
 ## 0.12.15 (devel)
 - Added `manifests/MANIFEST.md` as the authoritative SUM application-manifest authoring guide, based on the current VoicePrompter and SylphyHornPlusCon manifests.
 - Documented manifest responsibilities, ownership, identity fields, configuration fields, variables, settings, runtime memory, events, actions, queue policies, replays, presets, naming, versioning, and canonical-source rules.
@@ -46,7 +52,7 @@
 - Bumped updater revision to 8 and SUM runtime/package/Companion versions to 0.12.9. No VPP or application manifest changes are part of this release.
 
 ## 0.12.8 (devel)
-- Replaced direct PowerShell native-command execution in `upgrade.ps1` with a `System.Diagnostics.Process` wrapper so Git/npm stdout, stderr, and process exit codes are handled independently.
+- Replaced direct PowerShell native-command execution in `upgrade.ps1` with a `System.Diagnostics.Process` wrapper so Git/npm stdout, stderr and process exit codes are handled independently.
 - Git progress and informational text written to stderr no longer becomes a terminating PowerShell error under Windows PowerShell 5.1; success/failure is determined only by the child process exit code.
 - Routed repository probes, tracked-change inspection, Git synchronization, Node/npm version checks, dependency installation, and build execution through the same process wrapper. `.cmd` tools such as npm are executed through `cmd.exe` while their exit code and output remain captured deterministically.
 - Bumped updater revision to 7 and SUM runtime/package/Companion versions to 0.12.8. No VPP or application manifest changes are part of this release.
@@ -113,8 +119,8 @@
 
 ## 0.11.2 (devel)
 - Updated `statusBarSyncRequest` handling to the current VPP contract: `args` must contain exactly one bootstrap `mode` value (`off`, `top`, or `bottom`).
-- If `statusBarMemory.mode` is still unknown (`null`), VPM accepts the bootstrap mode from VP and stores it as the initial runtime mode before evaluating Status Bar availability.
-- If VPM already knows `statusBarMemory.mode`, the bootstrap mode is ignored and cannot overwrite the authoritative runtime memory.
+- If `statusBarMemory.mode` is still unknown (`null`), VPM accepts the bootstrap mode from VP and stores it as the initial runtime mode before evaluating whether the Status Bar memory is available for replay.
+- If VPM already knows `statusBarMemory.mode`, it MUST ignore `args.mode` completely for state-authority purposes. The bootstrap hint MUST NOT overwrite an existing remembered mode, even if the local VP value differs. This is what makes reconnect/resync deterministic: once VPM has an authoritative runtime mode, VPM wins during synchronization.
 - After bootstrap, the existing startup `activeZoneCount` from `Maximum Status Bar zones` makes the Status Bar memory replayable, so VPM can return `available:true` immediately.
 - Existing `statusBarModeChanged`, write-before-delivery, zone replay, reconnect/resync behavior, and Companion action IDs remain unchanged.
 
@@ -128,7 +134,7 @@
 - Implemented the current VPP Status Bar authority model: VPM now keeps the latest valid Status Bar state as runtime memory for the lifetime of the running Companion/VPM instance.
 - Status Bar runtime memory starts empty/unknown after a Companion/VPM restart; `off` remains a distinct valid state and no default mode/count is invented.
 - Removed persistence of the Status Bar snapshot from Companion configuration. Legacy `statusBarSnapshot` configuration is discarded during normalization.
-- Status Bar actions now update VPM memory before attempting delivery to VP, so temporary VP/VPBridge unavailability does not lose the latest desired state.
+- Status Bar actions now update VPM memory before attempting delivery to VP, so temporary VP/VPBridge unavailability does not lose the latest desired Status Bar state.
 - `Status Bar: Mode` now also follows write-before-delivery semantics and remains remembered while VP is unavailable.
 - Added handling of VP `statusBarSyncRequest`; VPM returns `available:false` when runtime memory cannot restore a complete state, or replays the current atomic Status Bar state and returns `available:true`.
 - `statusBarModeChanged` updates VPM memory before any zone replay; replay triggered by this event never sends an old mode back to VP.
