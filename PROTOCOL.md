@@ -6,6 +6,8 @@ VoicePrompter Protocol (VPP) is the application-level JSON protocol used between
 
 VoicePrompterBridge is primarily a transport layer. It authenticates connections, maintains transport queues, validates syntactically valid JSON, routes messages by Socket Box, and handles only explicitly defined messages addressed to `server`.
 
+Application manifests are a separate declarative layer used by Socket Universe Module (SUM) to project an application's VPP contract into Bitfocus Companion. VPP defines communication semantics and data ownership; manifests define SUM/Companion configuration, variables, actions, event mappings, runtime memory, replays, presets, and dynamic UI projections. Manifests MUST NOT define or infer transport routing. The manifest authoring specification is [`manifests/MANIFEST.md`](manifests/MANIFEST.md), which in turn relies on this document for protocol semantics.
+
 ## Common envelope
 
 Every VPP message MUST contain `protocolVersion`, unique `id`, `type`, `from`, `source`, and `timestamp`. `recipient` is part of the VPP envelope but MAY be omitted for application traffic only when the active transport can resolve the destination deterministically under the rules below. Messages addressed to `server` MUST always contain explicit `recipient: "server"`.
@@ -63,6 +65,22 @@ After a reconnect, restart, replacement admission, or any other new admission wh
 When this startup state is sent through SUB, normal recipient-resolution rules apply: the application MAY omit `recipient` and allow SUB to resolve the destination from the authenticated Socket Box and routing table. Neither the application nor SUM should hard-code a peer Socket Box name merely to perform state initialization.
 
 This rule describes state ownership, not transport ownership. SUB continues to route and queue generically and MUST NOT synthesize, interpret, or modify the application's state snapshot.
+
+## Dynamic authoritative data
+
+An application may expose dynamic runtime data whose contents can change while the connection remains active, including lists or collections such as virtual desktops, scenes, profiles, devices, or other named objects. Such data remains application-owned authoritative state even when a manifest uses it to build dynamic Companion controls.
+
+When a peer depends on dynamic authoritative data, the owning application MUST send a complete current snapshot after every new usable admission/reconnect where the receiving peer may have lost that runtime knowledge. It MUST NOT wait for the first later mutation and MUST NOT require the receiving peer or user to execute a command merely to discover the current collection. A complete empty collection is valid only when the authoritative collection is actually empty.
+
+Until a valid initial snapshot has been received, the receiver MUST treat that dynamic state as uninitialized. Transport admission, heartbeat success, or knowledge that the peer Socket Box is connected MUST NOT be interpreted as an empty/default dynamic collection.
+
+After initialization, the default VPP synchronization model for dynamic authoritative data is event-driven **on change**. The owner SHOULD publish a new authoritative snapshot whenever the collection membership changes or whenever a field that the peer relies on for identity, display labels, ordering, or other declared semantics changes. Unchanged dynamic state SHOULD NOT be resent periodically merely to prove liveness; heartbeat and transport health mechanisms serve that purpose.
+
+The application-specific contract decides which normal VPP event carries the snapshot. An existing state-change event MAY also carry the initial snapshot if its schema fully represents the required state. VPP does not require a universal `dynamicDataChanged` event name or a new envelope type.
+
+An application MAY additionally define an explicit synchronization request so a peer can force re-publication after suspected desynchronization. Such a request is supplementary: it does not remove the owner's obligation to publish the initial complete snapshot after a new usable connection.
+
+A SUM manifest may describe how a received dynamic collection is mapped into Companion UI choices, but that mapping does not change VPP ownership or update frequency. The manifest-side rules for dynamic collections and dropdowns are defined in [`manifests/MANIFEST.md`](manifests/MANIFEST.md).
 
 ## call
 
