@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.12.14 (devel)
+- Renamed the SUM application-manifest cache directory from `manifest` to `manifests` and added `manifests/manifests-list.json` as the registry of canonical application-owned manifest sources.
+- SUM now loads cached manifests from `manifests/` while ignoring the registry file itself. The cached VoicePrompter manifest is sourced from `Suenee/VoicePrompter/devel/manifest/voiceprompter.json`, and SylphyHornPlusCon from `Suenee/SylphyHornPlusCon/devel/manifest/sylphyhornpluscon.json`.
+- `upgrade.ps1` now refreshes registered manifests from their owning repositories on every SUM upgrade, validates downloaded `manifestVersion`/`id`, and falls back with a warning to a valid cached copy if a source is temporarily unavailable. Updater revision is 10.
+- Moved the read-only `SUM Version` row to the bottom of the Companion connection editor, after `Debug incoming messages`.
+- Bumped SUM runtime/package/Companion versions to 0.12.14. No VPP protocol change is part of this release.
+
 ## 0.12.13 (devel)
 - Fixed manifest-specific connection fields so `Manifest = None` shows no application-specific configuration fields, while each selected manifest shows only its own declared `configFields`.
 - Added a read-only `SUM Version` row to the connection editor so the actually loaded runtime version is visible even when Companion labels the module source simply as `Dev`.
