@@ -1,0 +1,15 @@
+{
+  "listVersion": 1,
+  "manifests": [
+    {
+      "id": "voiceprompter",
+      "file": "voiceprompter.json",
+      "url": "https://raw.githubusercontent.com/Suenee/VoicePrompter/devel/manifest/voiceprompter.json"
+    },
+    {
+      "id": "sylphyhornpluscon",
+      "file": "sylphyhornpluscon.json",
+      "url": "https://raw.githubusercontent.com/Suenee/SylphyHornPlusCon/devel/manifest/sylphyhornpluscon.json"
+    }
+  ]
+}
