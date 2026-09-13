@@ -724,6 +724,14 @@ System `ping` calls addressed to `server` are outside this mechanism. They are i
 
 `ping` is a system `call` handled by SUB. It verifies bridge connection and obtains Socket Box state and heartbeat policy. It MUST use the caller's authenticated Socket Box as `from`, `recipient: "server"`, `method: "ping"`, `args: {}`, and `expectsResponse: true`. SUB consumes it locally and MUST NOT forward it.
 
+For protocol version 1, the `result.mailboxes` object in a successful `ping` response is a **routing-scoped availability view**, not a global Socket Box directory. SUB MUST populate it only with Socket Boxes that the authenticated caller is permitted to address according to SUB's active routing configuration (`allowedRecipients` or its current equivalent). The caller's own Socket Box and all unrelated or non-permitted Socket Boxes MUST be absent.
+
+Every permitted recipient represented by the caller's routing configuration MUST remain present in this view even when it currently has no admitted active connection. Its entry then reports `connected: false`. A permitted recipient reports `connected: true` only when that Socket Box currently has at least one admitted active connection. Pending replacement-negotiation connections do not make a Socket Box connected.
+
+`ping` MUST NOT expose the global SUB topology and MUST NOT be usable as a discovery mechanism for unrelated Socket Boxes. Clients MUST NOT infer peer identity from application names, `source.app`, manifest metadata, Socket Box naming conventions, or by scanning a global connected-client list. Routing authority remains with SUB; the routing-scoped `mailboxes` result is the client's authoritative transport view of the Socket Boxes it is allowed to reach.
+
+When the routing-scoped view contains exactly one permitted recipient, a client MAY use that Socket Box as its routing-authoritative peer for transport availability. When it contains zero or more than one permitted recipient, a generic client MUST NOT invent or arbitrarily select a single peer; application traffic continues to follow the normal recipient-resolution rules. In all cases, `ping` reports transport/routing availability only and MUST NOT be interpreted as authoritative application state.
+
 A Socket Box is considered connected when it has at least one admitted active connection. Pending replacement-negotiation connections do not make a Socket Box connected.
 
 ## Socket Box connection admission and replacement negotiation
@@ -919,11 +927,11 @@ These rules preserve the VPP invariant that one request with `expectsResponse: t
 
 ## Heartbeat / idle health check
 
-SUB is authoritative for heartbeat interval. Default is 30000 ms (30 seconds). Clients obtain it after establishing/re-establishing their WebSocket connection. Normal valid traffic from the relevant opposite application Socket Box is proof of life.
+SUB is authoritative for heartbeat interval. Default is 30000 ms (30 seconds). Clients obtain it after establishing/re-establishing their WebSocket connection. Normal valid traffic from a routable opposite application Socket Box is proof of life.
 
 After a full interval without peer traffic, the client sends `ping` to `server`. Clients use a fixed 5000 ms (5 seconds) grace period. With default interval, expected health confirmation may therefore take up to 35000 ms (35 seconds).
 
-A valid ping response showing the relevant opposite Socket Box as not connected means SUB alive / peer unavailable. Failure to receive ping response within grace means the SUB connection is unhealthy and client SHOULD reconnect. A received `disconnecting` event is authoritative for an intentional departure and permits immediate state update.
+A valid ping response showing a permitted routable Socket Box as not connected means SUB alive / that route currently unavailable. A valid ping response showing it as connected means the SUB-authorized transport path to that Socket Box is currently available. With multiple permitted recipients, the client MUST evaluate the routing-scoped entries relevant to its operation and MUST NOT arbitrarily reinterpret them as one discovered global peer. Failure to receive ping response within grace means the SUB connection is unhealthy and client SHOULD reconnect. A received `disconnecting` event is authoritative for an intentional departure and permits immediate state update.
 
 ## Connection-state interpretation
 
