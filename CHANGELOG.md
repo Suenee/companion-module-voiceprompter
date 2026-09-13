@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.12.18 (devel)
+- Removed the obsolete tracked `manifests/MANIFEST.md` compatibility alias, which collided by case only with the authoritative `manifests/manifest.md` on Windows case-insensitive filesystems and caused the SUM updater to detect a false local tracked modification.
+- Kept `manifests/manifest.md` as the single authoritative manifest authoring guide. No application manifest, runtime behavior, updater logic, or VPP protocol semantics changed in this SUM release.
+- Bumped SUM runtime/package/Companion versions to 0.12.18.
+
 ## 0.12.17 (devel)
 - Moved the standalone manifest-cache refresh launcher from repository root to `manifests/sync-manifests.cmd`, keeping manifest-maintenance utilities together with the manifest registry/cache.
 - Fixed the standalone Windows launcher path handling by no longer passing the repository root as a quoted trailing-backslash argument; the launcher now invokes `..\tools\update-manifests.ps1` from inside `manifests\`, and that PowerShell script resolves the repository root itself.
@@ -66,10 +71,10 @@
 - Fixed Windows PowerShell 5.1 native-command argument binding in `upgrade.ps1`: `Invoke-Native` now accepts an explicit string-array `-Arguments` parameter instead of relying on `ValueFromRemainingArguments`.
 - Updated every `git` and `npm` call routed through `Invoke-Native` to use named `-FilePath` / `-Arguments` binding, so commands such as `git remote set-url origin ...` are passed as separate native arguments instead of one invalid combined command string.
 - Kept direct Git probes that already use native argument splatting unchanged.
-- Bumped updater revision to 6 and SUM runtime/package/Companion versions to 0.12.7. No VPP or application manifest changes are part of this release.
+- Bumped updater revision to 6 and SUM runtime/package/Companion versions to 0.12.7. No VPP, application manifest, or updater changes are part of this release.
 
 ## 0.12.6 (devel)
-- Simplified legacy updater recovery according to the shared `UPGRADE.md` standard: the temporary authoritative `upgrade.ps1` no longer probes whether `upgrade.ps1` exists in the old local `HEAD` before repository synchronization.
+- Simplified legacy updater recovery according to the shared FHM `UPGRADE.md` standard: the temporary authoritative `upgrade.ps1` no longer probes whether `upgrade.ps1` exists in the old local `HEAD` before repository synchronization.
 - Removed the failing `git cat-file -e HEAD:upgrade.ps1` migration probe that Windows PowerShell 5.1 could promote to a terminating error under `$ErrorActionPreference = 'Stop'`.
 - A locally dirty `upgrade.cmd` is now accepted only when Git semantics confirm that its working-tree content already matches `origin/devel`; arbitrary local launcher edits still abort the upgrade instead of being overwritten.
 - The temporary runner then synchronizes `devel`, verifies `HEAD == origin/devel`, installs dependencies, builds, and verifies synchronized SUM versions as before.
