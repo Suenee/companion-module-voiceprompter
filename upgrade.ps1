@@ -8,7 +8,7 @@ $ProgressPreference = 'SilentlyContinue'
 
 $RepoUrl = 'https://github.com/Suenee/companion-module-voiceprompter.git'
 $Branch = 'devel'
-$UpdaterRevision = '11'
+$UpdaterRevision = '12'
 $RepoDir = [System.IO.Path]::GetFullPath($RepoDir).TrimEnd('\')
 $LogDir = Join-Path $RepoDir 'logs'
 $LogFile = Join-Path $LogDir 'upgrade.log'
@@ -254,7 +254,7 @@ try {
         Write-Log "Verified SUM version: $mainVersion"
         if (-not (Test-Path -LiteralPath (Join-Path $RepoDir 'upgrade.cmd'))) { Fail 'upgrade.cmd is missing after synchronization.' }
         if (-not (Test-Path -LiteralPath (Join-Path $RepoDir 'upgrade.ps1'))) { Fail 'upgrade.ps1 is missing after synchronization.' }
-        if (-not (Test-Path -LiteralPath (Join-Path $RepoDir 'sync-manifests.cmd'))) { Fail 'sync-manifests.cmd is missing after synchronization.' }
+        if (-not (Test-Path -LiteralPath (Join-Path $RepoDir 'manifests\sync-manifests.cmd'))) { Fail 'manifests/sync-manifests.cmd is missing after synchronization.' }
         if (-not (Test-Path -LiteralPath $manifestSyncScript)) { Fail 'tools/update-manifests.ps1 is missing after synchronization.' }
 
         Set-Phase 'COMPLETE'
