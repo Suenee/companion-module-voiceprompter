@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.12.19 (devel)
+- Fixed `upgrade.ps1` VERIFY so the standalone manifest-cache launcher is checked at its current location `manifests/sync-manifests.cmd` instead of the obsolete repository-root `sync-manifests.cmd` path.
+- Bumped updater revision to 12. No VPP protocol, application-manifest contract, or SUM runtime behavior changed in this release.
+- Bumped SUM runtime/package/Companion versions to 0.12.19.
+
 ## 0.12.18 (devel)
 - Removed the obsolete tracked `manifests/MANIFEST.md` compatibility alias, which collided by case only with the authoritative `manifests/manifest.md` on Windows case-insensitive filesystems and caused the SUM updater to detect a false local tracked modification.
 - Kept `manifests/manifest.md` as the single authoritative manifest authoring guide. No application manifest, runtime behavior, updater logic, or VPP protocol semantics changed in this SUM release.
