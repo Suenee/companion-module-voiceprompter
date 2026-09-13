@@ -144,7 +144,7 @@
 - Implemented the current VPP Status Bar authority model: VPM now keeps the latest valid Status Bar state as runtime memory for the lifetime of the running Companion/VPM instance.
 - Status Bar runtime memory starts empty/unknown after a Companion/VPM restart; `off` remains a distinct valid state and no default mode/count is invented.
 - Removed persistence of the Status Bar snapshot from Companion configuration. Legacy `statusBarSnapshot` configuration is discarded during normalization.
-- Status Bar actions now update VPM memory before attempting delivery to VP, so temporary VP or VPBridge unavailability does not lose the latest desired state.
+- Status Bar actions now update VPM memory before attempting delivery to VP, so temporary VP/VPBridge unavailability does not lose the latest desired state.
 - `Status Bar: Mode` now also follows write-before-delivery semantics and remains remembered while VP is unavailable.
 - Added handling of VP `statusBarSyncRequest`; VPM returns `available:false` when runtime memory cannot restore a complete state, or replays the current atomic Status Bar state and returns `available:true`.
 - `statusBarModeChanged` updates VPM memory before any zone replay; replay triggered by this event never sends an old mode back to VP.
