@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.12.17 (devel)
+- Moved the standalone manifest-cache refresh launcher from repository root to `manifests/sync-manifests.cmd`, keeping manifest-maintenance utilities together with the manifest registry/cache.
+- Fixed the standalone Windows launcher path handling by no longer passing the repository root as a quoted trailing-backslash argument; the launcher now invokes `..\tools\update-manifests.ps1` from inside `manifests\`, and that PowerShell script resolves the repository root itself.
+- Bumped SUM runtime/package/Companion versions to 0.12.17. No VPP protocol or application-manifest contract change is part of this SUM release.
+
 ## 0.12.16 (devel)
 - Added standalone `sync-manifests.cmd` for refreshing the local SUM manifest cache without running a full module upgrade.
 - Added reusable `tools/update-manifests.ps1` as the single manifest synchronization implementation. It reads `manifests/manifests-list.json`, downloads each canonical manifest, validates `manifestVersion` and `id`, atomically replaces valid cache files, verifies all registered manifests, and falls back with a warning to an already-valid cached copy when a source is temporarily unavailable.
@@ -215,7 +220,7 @@
 ## 0.9.6 (devel)
 - Added visible connection diagnostics to the module configuration panel.
 - Diagnostics show overall state, VPBridge state, VoicePrompter state, and the current reason for Warning/Error.
-- Preserved the established color logic: green = connected, yellow = warning/peer unavailable or graceful server departure, red = connection/configuration failure, gray = connecting/unknown.
+- Preserved the established color logic: green = connected, yellow = warning/peer unavailable or graceful server departure, red = connection/config/auth/heartbeat failure, gray = connecting/unknown.
 - Diagnostics use Companion `static-text` config fields and reflect the current module state when the configuration editor is opened.
 
 ## 0.9.0 (devel)
