@@ -71,10 +71,10 @@
 - Fixed Windows PowerShell 5.1 native-command argument binding in `upgrade.ps1`: `Invoke-Native` now accepts an explicit string-array `-Arguments` parameter instead of relying on `ValueFromRemainingArguments`.
 - Updated every `git` and `npm` call routed through `Invoke-Native` to use named `-FilePath` / `-Arguments` binding, so commands such as `git remote set-url origin ...` are passed as separate native arguments instead of one invalid combined command string.
 - Kept direct Git probes that already use native argument splatting unchanged.
-- Bumped updater revision to 6 and SUM runtime/package/Companion versions to 0.12.7. No VPP, application manifest, or updater changes are part of this release.
+- Bumped updater revision to 6 and SUM runtime/package/Companion versions to 0.12.7. No VPP or application manifest changes are part of this release.
 
 ## 0.12.6 (devel)
-- Simplified legacy updater recovery according to the shared FHM `UPGRADE.md` standard: the temporary authoritative `upgrade.ps1` no longer probes whether `upgrade.ps1` exists in the old local `HEAD` before repository synchronization.
+- Simplified legacy updater recovery according to the shared `UPGRADE.md` standard: the temporary authoritative `upgrade.ps1` no longer probes whether `upgrade.ps1` exists in the old local `HEAD` before repository synchronization.
 - Removed the failing `git cat-file -e HEAD:upgrade.ps1` migration probe that Windows PowerShell 5.1 could promote to a terminating error under `$ErrorActionPreference = 'Stop'`.
 - A locally dirty `upgrade.cmd` is now accepted only when Git semantics confirm that its working-tree content already matches `origin/devel`; arbitrary local launcher edits still abort the upgrade instead of being overwritten.
 - The temporary runner then synchronizes `devel`, verifies `HEAD == origin/devel`, installs dependencies, builds, and verifies synchronized SUM versions as before.
@@ -144,7 +144,7 @@
 - Implemented the current VPP Status Bar authority model: VPM now keeps the latest valid Status Bar state as runtime memory for the lifetime of the running Companion/VPM instance.
 - Status Bar runtime memory starts empty/unknown after a Companion/VPM restart; `off` remains a distinct valid state and no default mode/count is invented.
 - Removed persistence of the Status Bar snapshot from Companion configuration. Legacy `statusBarSnapshot` configuration is discarded during normalization.
-- Status Bar actions now update VPM memory before attempting delivery to VP, so temporary VP/VPBridge unavailability does not lose the latest desired state.
+- Status Bar actions now update VPM memory before attempting delivery to VP, so temporary VP or VPBridge unavailability does not lose the latest desired state.
 - `Status Bar: Mode` now also follows write-before-delivery semantics and remains remembered while VP is unavailable.
 - Added handling of VP `statusBarSyncRequest`; VPM returns `available:false` when runtime memory cannot restore a complete state, or replays the current atomic Status Bar state and returns `available:true`.
 - `statusBarModeChanged` updates VPM memory before any zone replay; replay triggered by this event never sends an old mode back to VP.
