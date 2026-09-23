@@ -539,11 +539,13 @@ class SocketUniverseInstance extends InstanceBase {
       } else {
         const valuePath = option.valueFrom ?? option.value ?? collectionSpec.item?.value
         const labelPath = option.labelFrom ?? collectionSpec.item?.label
-        out.choices = snapshot.map((entry) => {
+        const staticChoices = Array.isArray(out.choices) ? out.choices : []
+        const dynamicChoices = snapshot.map((entry) => {
           const value = getPath(entry.item, valuePath)
           const label = getPath(entry.item, labelPath)
           return { id: value ?? entry.id, label: String(label ?? entry.label) }
         })
+        out.choices = [...staticChoices, ...dynamicChoices]
         this.log('debug', `SUM manifest: choicesFrom ${option.choicesFrom}: ${out.choices.length} choices`)
       }
     }
