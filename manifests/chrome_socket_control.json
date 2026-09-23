@@ -1,0 +1,50 @@
+{
+  "manifestVersion": 1,
+  "id": "chrome_socket_control",
+  "name": "Chrome Socket Control",
+  "version": "0.11",
+  "description": "Chrome/Brave window and tab control profile for Socket Universe Module.",
+  "vppVersion": 1,
+  "namespace": "chrome",
+  "sourceApp": "SocketUniverseModule",
+  "peerLabel": "Chrome Socket Control",
+  "configFields": [],
+  "variables": [
+    {"id":"connected","name":"SUB connected (1/0)","role":"serverConnected"},
+    {"id":"chrome_connected","name":"Chrome Socket Control connected (1/0)","role":"peerConnected"},
+    {"id":"connection_state","name":"Connection state","role":"connectionState"},
+    {"id":"diagnostic_level","name":"Diagnostic level (green/yellow/red/gray)","role":"diagnosticLevel"},
+    {"id":"diagnostic_status","name":"Diagnostic overall status","role":"diagnosticStatus"},
+    {"id":"diagnostic_sub","name":"Diagnostic SUB status","role":"diagnosticServer"},
+    {"id":"diagnostic_chrome","name":"Diagnostic Chrome status","role":"diagnosticPeer"},
+    {"id":"diagnostic_reason","name":"Diagnostic reason","role":"diagnosticReason"},
+    {"id":"window_count","name":"Browser window count"},
+    {"id":"tab_count","name":"Browser tab count"}
+  ],
+  "dynamicVariables": [],
+  "settings": {},
+  "memory": {},
+  "dynamicCollections": {
+    "windows": {"event":"browserStateChanged","path":"windows","item":{"value":"windowId","label":"windowId"}},
+    "tabs": {"event":"browserStateChanged","path":"tabs","item":{"value":"tabId","label":"title"}}
+  },
+  "events": {
+    "browserStateChanged": {
+      "operation":"mapArgsToVariables",
+      "expectsResponse":false,
+      "args":{"windows":{"type":"array"},"tabs":{"type":"array"},"windowCount":{"type":"integer"},"tabCount":{"type":"integer"}},
+      "map":{"windowCount":"window_count","tabCount":"tab_count"}
+    }
+  },
+  "replays": {},
+  "actions": {
+    "tab_create":{"name":"Tab: Create","operation":"call","method":"createTab","expectsResponse":true,"queue":{"policy":"fifo"},"options":[{"type":"textinput","id":"url","label":"URL","default":"","useVariables":true,"multiline":false,"arg":"url","parse":"string"}]},
+    "tab_close":{"name":"Tab: Close","operation":"call","method":"closeTab","expectsResponse":true,"queue":{"policy":"fifo"},"options":[{"type":"dropdown","id":"tabId","label":"Tab","default":"","arg":"tabId","parse":"integer","choicesFrom":"tabs","value":"tabId","labelFrom":"title"}]},
+    "tab_activate":{"name":"Tab: Activate","operation":"call","method":"activateTab","expectsResponse":true,"queue":{"policy":"replace","key":"tab.activate"},"options":[{"type":"dropdown","id":"tabId","label":"Tab","default":"","arg":"tabId","parse":"integer","choicesFrom":"tabs","value":"tabId","labelFrom":"title"}]},
+    "tab_move":{"name":"Tab: Move to Window","operation":"call","method":"moveTab","expectsResponse":true,"queue":{"policy":"fifo"},"options":[{"type":"dropdown","id":"tabId","label":"Tab","default":"","arg":"tabId","parse":"integer","choicesFrom":"tabs","value":"tabId","labelFrom":"title"},{"type":"dropdown","id":"windowId","label":"Target Window","default":"","arg":"windowId","parse":"integer","choicesFrom":"windows","value":"windowId","labelFrom":"windowId"},{"type":"number","id":"index","label":"Index (-1 = end)","default":-1,"arg":"index","parse":"integer"}]},
+    "window_create":{"name":"Window: Create","operation":"call","method":"createWindow","expectsResponse":true,"queue":{"policy":"fifo"},"options":[]},
+    "window_focus":{"name":"Window: Focus","operation":"call","method":"focusWindow","expectsResponse":true,"queue":{"policy":"replace","key":"window.focus"},"options":[{"type":"dropdown","id":"windowId","label":"Window","default":"","arg":"windowId","parse":"integer","choicesFrom":"windows","value":"windowId","labelFrom":"windowId"}]},
+    "window_close":{"name":"Window: Close","operation":"call","method":"closeWindow","expectsResponse":true,"queue":{"policy":"fifo"},"options":[{"type":"dropdown","id":"windowId","label":"Window","default":"","arg":"windowId","parse":"integer","choicesFrom":"windows","value":"windowId","labelFrom":"windowId"}]}
+  },
+  "presets": []
+}
