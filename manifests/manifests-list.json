@@ -10,6 +10,11 @@
       "id": "sylphyhornpluscon",
       "file": "sylphyhornpluscon.json",
       "url": "https://raw.githubusercontent.com/Suenee/SylphyHornPlusCon/devel/manifest/sylphyhornpluscon.json"
+    },
+    {
+      "id": "chrome_socket_control",
+      "file": "chrome_socket_control.json",
+      "url": "https://raw.githubusercontent.com/Suenee/chrome-extension-socket-control/main/manifest/chrome_socket_control.json"
     }
   ]
 }
