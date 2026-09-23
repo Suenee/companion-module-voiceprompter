@@ -8,7 +8,7 @@ $ProgressPreference = 'SilentlyContinue'
 
 $RepoUrl = 'https://github.com/Suenee/companion-module-voiceprompter.git'
 $Branch = 'devel'
-$UpdaterRevision = '13'
+$UpdaterRevision = '14'
 $RepoDir = [System.IO.Path]::GetFullPath($RepoDir).TrimEnd('\')
 $LogDir = Join-Path $RepoDir 'logs'
 $LogFile = Join-Path $LogDir 'upgrade.log'
@@ -184,10 +184,22 @@ try {
         Invoke-ExternalProcess -FilePath $script:GitExe -Arguments @('fetch', 'origin', $Branch) | Out-Null
 
         $dirty = @(Get-TrackedChanges)
+        $managedManifestPaths = @()
+        $manifestRegistryPath = Join-Path $RepoDir 'manifests\manifests-list.json'
+        if (Test-Path -LiteralPath $manifestRegistryPath) {
+            try {
+                $manifestRegistry = Get-Content -LiteralPath $manifestRegistryPath -Raw | ConvertFrom-Json
+                $managedManifestPaths = @($manifestRegistry.manifests | ForEach-Object {
+                    if ($_.file) { 'manifests\' + [string]$_.file }
+                })
+            }
+            catch {
+                Fail 'Cannot parse manifests/manifests-list.json while checking updater-managed cache files.'
+            }
+        }
         $unexpected = @($dirty | Where-Object {
             $_ -ine 'upgrade.cmd' -and
-            $_ -ine 'manifests\voiceprompter.json' -and
-            $_ -ine 'manifests\sylphyhornpluscon.json'
+            $managedManifestPaths -inotcontains $_
         })
         if ($unexpected.Count -gt 0) {
             Write-Log ('Tracked local changes: ' + ($unexpected -join ', ')) Yellow
