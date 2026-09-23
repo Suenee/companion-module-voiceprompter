@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.12.20 (devel)
+- After every successful Socket Box admission/re-admission, SUM's existing immediate server ping now uses the routing-scoped ping result to establish peer availability immediately when SUB exposes exactly one permitted peer. Zero or multiple permitted peers are never guessed or selected.
+- Kept heartbeat as the ongoing transport/routing health check and kept application-state synchronization separate; no SHPC-specific routing or application protocol was added.
+- Updater revision 13 explicitly removes the obsolete repository-root `manifest` directory after authoritative synchronization, without using broad `git clean` or deleting unrelated untracked files.
+- Bumped SUM runtime/package/Companion versions to 0.12.20. No VPP protocol or application-manifest contract change is part of this release.
+
 ## 0.12.19 (devel)
 - Fixed `upgrade.ps1` VERIFY so the standalone manifest-cache launcher is checked at its current location `manifests/sync-manifests.cmd` instead of the obsolete repository-root `sync-manifests.cmd` path.
 - Bumped updater revision to 12. No VPP protocol, application-manifest contract, or SUM runtime behavior changed in this release.
