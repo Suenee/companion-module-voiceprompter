@@ -6,7 +6,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const MODULE_VERSION = '0.12.22'
+const MODULE_VERSION = '0.12.23'
 const SUPPORTED_MANIFEST_VERSION = 1
 const DEFAULT_HOST = '127.0.0.1'
 const DEFAULT_PORT = 8170
@@ -115,6 +115,7 @@ class SocketUniverseInstance extends InstanceBase {
   manifest = null
   roleIds = {}
   runtimeMemory = {}
+  dynamicCollections = {}
   ws = null
   reconnectTimer = null
   heartbeatTimer = null
@@ -146,6 +147,7 @@ class SocketUniverseInstance extends InstanceBase {
       return
     }
     this.initializeRuntimeMemory()
+    this.initializeDynamicCollections()
     this.defineVariables()
     this.defineActions()
     this.definePresets()
@@ -184,6 +186,7 @@ class SocketUniverseInstance extends InstanceBase {
         return
       }
       this.initializeRuntimeMemory()
+      this.initializeDynamicCollections()
       this.defineVariables()
       this.defineActions()
       this.definePresets()
@@ -378,6 +381,48 @@ class SocketUniverseInstance extends InstanceBase {
     }
   }
 
+  initializeDynamicCollections() {
+    this.dynamicCollections = {}
+    for (const id of Object.keys(this.manifest?.dynamicCollections ?? {})) this.dynamicCollections[id] = []
+  }
+
+  updateDynamicCollectionsForEvent(eventName, args) {
+    let changed = false
+    for (const [collectionId, spec] of Object.entries(this.manifest?.dynamicCollections ?? {})) {
+      if (spec.event !== eventName) continue
+      const source = getPath(args, spec.path)
+      if (!Array.isArray(source)) {
+        const reason = `dynamic collection ${collectionId}: path "${spec.path}" is not an array`
+        this.log('warn', `SUM manifest: ${reason}`)
+        return { valid: false, error: reason }
+      }
+      const valuePath = spec.item?.value
+      const labelPath = spec.item?.label
+      if (!valuePath || !labelPath) {
+        const reason = `dynamic collection ${collectionId}: item.value/item.label is missing`
+        this.log('warn', `SUM manifest: ${reason}`)
+        return { valid: false, error: reason }
+      }
+      const choices = []
+      for (let index = 0; index < source.length; index++) {
+        const item = source[index]
+        const value = getPath(item, valuePath)
+        const label = getPath(item, labelPath)
+        if (value === undefined || value === null || label === undefined || label === null) {
+          const reason = `dynamic collection ${collectionId}: item ${index} is missing "${valuePath}" or "${labelPath}"`
+          this.log('warn', `SUM manifest: ${reason}`)
+          return { valid: false, error: reason }
+        }
+        choices.push({ id: value, label: String(label), item: deepClone(item) })
+      }
+      const previous = this.dynamicCollections[collectionId] ?? []
+      this.dynamicCollections[collectionId] = choices
+      if (JSON.stringify(previous) !== JSON.stringify(choices)) changed = true
+      this.log('debug', `SUM manifest: dynamic collection ${collectionId}: ${choices.length} items`)
+    }
+    return { valid: true, changed }
+  }
+
   publishMemory(memoryId) {
     const spec = this.manifest?.memory?.[memoryId]
     const root = this.runtimeMemory[memoryId]
@@ -481,6 +526,27 @@ class SocketUniverseInstance extends InstanceBase {
     delete out.invalid
     delete out.maxUnicode
     delete out.visibleForMethodArg
+    delete out.choicesFrom
+    delete out.value
+    delete out.valueFrom
+    delete out.labelFrom
+    if (option.choicesFrom) {
+      const collectionSpec = this.manifest?.dynamicCollections?.[option.choicesFrom]
+      const snapshot = this.dynamicCollections[option.choicesFrom] ?? []
+      if (!collectionSpec) {
+        this.log('warn', `SUM manifest: choicesFrom "${option.choicesFrom}" is not declared`)
+        out.choices = []
+      } else {
+        const valuePath = option.valueFrom ?? option.value ?? collectionSpec.item?.value
+        const labelPath = option.labelFrom ?? collectionSpec.item?.label
+        out.choices = snapshot.map((entry) => {
+          const value = getPath(entry.item, valuePath)
+          const label = getPath(entry.item, labelPath)
+          return { id: value ?? entry.id, label: String(label ?? entry.label) }
+        })
+        this.log('debug', `SUM manifest: choicesFrom ${option.choicesFrom}: ${out.choices.length} choices`)
+      }
+    }
     if (option.visibleForMethodArg && actionSpec.operation === 'methodChoiceCall') {
       out.isVisible = (opts) => {
         const methodId = String(opts[actionSpec.methodOption] ?? '')
@@ -1009,6 +1075,8 @@ class SocketUniverseInstance extends InstanceBase {
     if (spec.type === 'integer') return Number.isInteger(value) && (spec.min === undefined || value >= spec.min) && (spec.max === undefined || value <= spec.max)
     if (spec.type === 'enum') return typeof value === 'string' && (spec.values ?? []).includes(value)
     if (spec.type === 'boolean') return typeof value === 'boolean'
+    if (spec.type === 'array') return Array.isArray(value)
+    if (spec.type === 'object') return isObject(value)
     return false
   }
 
@@ -1063,7 +1131,11 @@ class SocketUniverseInstance extends InstanceBase {
 
   handleManifestEvent(m, raw) {
     const spec = this.manifest.events?.[m.event]
-    if (!spec) return { handled: false }
+    if (!spec) {
+      this.log('warn', `SUM manifest: event not declared: ${m.event}`)
+      return { handled: false }
+    }
+    this.log('debug', `SUM manifest: manifest event matched: ${m.event}`)
     if (spec.expectsResponse === true && m.expectsResponse !== true) return { handled: true, valid: false, error: 'Event requires expectsResponse:true' }
     if (spec.expectsResponse === false && m.expectsResponse === true) return { handled: true, valid: false, error: 'Event requires expectsResponse:false' }
 
@@ -1077,10 +1149,18 @@ class SocketUniverseInstance extends InstanceBase {
     }
 
     if (spec.operation === 'mapArgsToVariables') {
-      if (!this.validateArgsAgainstSchema(m.args, spec.args)) return { handled: true, valid: false, error: `Invalid ${m.event} event` }
+      if (!this.validateArgsAgainstSchema(m.args, spec.args)) {
+        const expected = Object.keys(spec.args ?? {}).join(', ')
+        const received = isObject(m.args) ? Object.keys(m.args).join(', ') : typeof m.args
+        return { handled: true, valid: false, error: `Invalid ${m.event} event args; expected [${expected}], received [${received}]` }
+      }
       const values = {}
       for (const [arg, variableId] of Object.entries(spec.map ?? {})) values[variableId] = m.args[arg]
       this.setVariableValues(values)
+      this.log('debug', `SUM manifest: variables mapped: ${Object.keys(values).join(', ') || '(none)'}`)
+      const collections = this.updateDynamicCollectionsForEvent(m.event, m.args)
+      if (!collections.valid) return { handled: true, valid: false, error: collections.error }
+      if (collections.changed) this.defineActions()
       return { handled: true, valid: true }
     }
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.12.23 (devel)
+- Implemented the manifest-driven `dynamicCollections` runtime: authoritative arrays from matching event `args` are converted into current snapshots and exposed to action dropdowns through `choicesFrom`; changed snapshots refresh Companion action definitions without application-specific code.
+- Added manifest event diagnostics for matched/unknown events, mapped variables, collection item counts, generated choice counts, and concrete collection/schema failures.
+- Added manifest schema support for array/object event arguments so structured authoritative snapshots can pass generic event validation while preserving exact manifest-declared argument checking.
+- Dynamic collection snapshots are replaced by each new valid authoritative event, including reconnect snapshots. No SHPC- or Chrome-specific runtime logic was added.
+- Bumped SUM runtime/package/Companion versions to 0.12.23. Application manifest caches remain owned by their authoritative application repositories.
+
 ## 0.12.22 (devel)
 - Fixed upgrade dirty-tree protection so updater-managed manifest cache files are derived from `manifests/manifests-list.json` instead of a hard-coded list. Newly registered caches such as `manifests/chrome_socket_control.json` therefore no longer block upgrades after synchronization changes them.
 - Updater revision 14 keeps source-file protection intact while allowing only registry-declared manifest caches and `upgrade.cmd` through the pre-sync check.
