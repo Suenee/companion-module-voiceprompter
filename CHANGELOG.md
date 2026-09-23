@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.12.22 (devel)
+- Fixed upgrade dirty-tree protection so updater-managed manifest cache files are derived from `manifests/manifests-list.json` instead of a hard-coded list. Newly registered caches such as `manifests/chrome_socket_control.json` therefore no longer block upgrades after synchronization changes them.
+- Updater revision 14 keeps source-file protection intact while allowing only registry-declared manifest caches and `upgrade.cmd` through the pre-sync check.
+- Bumped SUM runtime/package/Companion versions to 0.12.22. No VPP protocol or application-manifest contract change is part of this release.
+
 ## 0.12.21 (devel)
 - Registered the canonical Chrome Socket Control application manifest from `Suenee/chrome-extension-socket-control/main/manifest/chrome_socket_control.json` in the SUM manifest registry and added its synchronized local cache.
 - Bumped SUM runtime/package/Companion versions to 0.12.21. No VPP protocol, updater behavior, or application-manifest contract change is part of this release.
