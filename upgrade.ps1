@@ -8,7 +8,7 @@ $ProgressPreference = 'SilentlyContinue'
 
 $RepoUrl = 'https://github.com/Suenee/companion-module-voiceprompter.git'
 $Branch = 'devel'
-$UpdaterRevision = '12'
+$UpdaterRevision = '13'
 $RepoDir = [System.IO.Path]::GetFullPath($RepoDir).TrimEnd('\')
 $LogDir = Join-Path $RepoDir 'logs'
 $LogFile = Join-Path $LogDir 'upgrade.log'
@@ -214,6 +214,13 @@ try {
         $remoteHead = Get-GitText @('rev-parse', "origin/$Branch")
         if (-not $head -or $head -ne $remoteHead) { Fail 'Repository synchronization verification failed: HEAD does not equal origin/devel.' }
         Write-Log "Synchronized commit: $head"
+
+        Set-Phase 'CLEANUP'
+        $legacyManifestDir = Join-Path $RepoDir 'manifest'
+        if (Test-Path -LiteralPath $legacyManifestDir) {
+            Remove-Item -LiteralPath $legacyManifestDir -Recurse -Force
+            Write-Log 'Removed obsolete legacy manifest directory.'
+        }
 
         Set-Phase 'MANIFESTS'
         $manifestSyncScript = Join-Path $RepoDir 'tools\update-manifests.ps1'
