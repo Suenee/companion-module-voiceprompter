@@ -6,7 +6,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const MODULE_VERSION = '0.12.19'
+const MODULE_VERSION = '0.12.20'
 const SUPPORTED_MANIFEST_VERSION = 1
 const DEFAULT_HOST = '127.0.0.1'
 const DEFAULT_PORT = 8170
@@ -885,6 +885,8 @@ class SocketUniverseInstance extends InstanceBase {
   applyPingResponse(m) {
     const result = isObject(m.result) ? m.result : {}
     const socketBoxes = isObject(result.socketBoxes) ? result.socketBoxes : (isObject(result.mailboxes) ? result.mailboxes : {})
+    const routedPeers = Object.keys(socketBoxes).filter((name) => name !== SERVER_MAILBOX && name !== this.getLocalSocketBox() && isObject(socketBoxes[name]))
+    if (!this.peerSocketBox && routedPeers.length === 1) this.peerSocketBox = routedPeers[0]
     const peer = this.peerSocketBox && isObject(socketBoxes[this.peerSocketBox]) ? socketBoxes[this.peerSocketBox] : null
     const hb = isObject(result.heartbeat) ? result.heartbeat : {}
     const interval = Number(hb.intervalMs)
