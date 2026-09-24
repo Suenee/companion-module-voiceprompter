@@ -8,7 +8,7 @@ $ProgressPreference = 'SilentlyContinue'
 
 $RepoUrl = 'https://github.com/Suenee/companion-module-voiceprompter.git'
 $Branch = 'devel'
-$UpdaterRevision = '14'
+$UpdaterRevision = '15'
 $RepoDir = [System.IO.Path]::GetFullPath($RepoDir).TrimEnd('\')
 $LogDir = Join-Path $RepoDir 'logs'
 $LogFile = Join-Path $LogDir 'upgrade.log'
@@ -52,7 +52,8 @@ function Invoke-ExternalProcess {
         [string[]]$Arguments = @(),
         [int[]]$AllowedExitCodes = @(0),
         [switch]$QuietCommand,
-        [switch]$QuietOutput
+        [switch]$QuietOutput,
+        [ConsoleColor]$OutputColor = [ConsoleColor]::Gray
     )
 
     $argumentText = (($Arguments | ForEach-Object { Format-ProcessArgument ([string]$_) }) -join ' ')
@@ -97,7 +98,7 @@ function Invoke-ExternalProcess {
             if ([string]::IsNullOrEmpty($stream)) { continue }
             foreach ($line in ($stream -split "`r?`n")) {
                 if ($line -eq '') { continue }
-                Write-Host $line -ForegroundColor Gray
+                Write-Host $line -ForegroundColor $OutputColor
                 Add-Content -LiteralPath $LogFile -Value $line -Encoding UTF8
             }
         }
@@ -239,7 +240,7 @@ try {
         if (-not (Test-Path -LiteralPath $manifestSyncScript)) { Fail 'tools/update-manifests.ps1 is missing after synchronization.' }
         $powershellCommand = Get-Command powershell.exe -ErrorAction SilentlyContinue
         if (-not $powershellCommand) { Fail 'powershell.exe is not available for manifest synchronization.' }
-        $manifestSync = Invoke-ExternalProcess -FilePath $powershellCommand.Source -Arguments @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $manifestSyncScript, '-RepoDir', $RepoDir)
+        $manifestSync = Invoke-ExternalProcess -FilePath $powershellCommand.Source -Arguments @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $manifestSyncScript, '-RepoDir', $RepoDir) -OutputColor Magenta
         if ($manifestSync.StdOut -match 'STATUS:\s+WARNING') { $HadWarning = $true }
 
         Set-Phase 'DEPENDENCIES'

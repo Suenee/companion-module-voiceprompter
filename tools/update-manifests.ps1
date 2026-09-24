@@ -8,7 +8,6 @@ $ProgressPreference = 'SilentlyContinue'
 $RepoDir = [System.IO.Path]::GetFullPath($RepoDir).TrimEnd('\')
 $ManifestDir = Join-Path $RepoDir 'manifests'
 $ManifestListPath = Join-Path $ManifestDir 'manifests-list.json'
-$HadWarning = $false
 
 function Test-ManifestFile {
     param(
@@ -54,24 +53,26 @@ try {
         $temp = "$target.download"
         try {
             if (Test-Path -LiteralPath $temp) { Remove-Item -LiteralPath $temp -Force }
-            Invoke-WebRequest -Uri $manifestUrl -OutFile $temp -UseBasicParsing
+            $separator = if ($manifestUrl.Contains('?')) { '&' } else { '?' }
+            $freshUrl = $manifestUrl + $separator + 'sum_sync=' + [Uri]::EscapeDataString(([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds().ToString() + '-' + [Guid]::NewGuid().ToString('N')))
+            $headers = @{
+                'Cache-Control' = 'no-cache, no-store, max-age=0'
+                'Pragma' = 'no-cache'
+            }
+            Invoke-WebRequest -Uri $freshUrl -Headers $headers -OutFile $temp -UseBasicParsing
             if (-not (Test-ManifestFile -Path $temp -ExpectedId $manifestId)) {
                 throw "Downloaded manifest '$manifestId' failed validation."
             }
+            $downloadedManifest = Get-Content -LiteralPath $temp -Raw | ConvertFrom-Json
+            $downloadedVersion = if ($null -ne $downloadedManifest.version) { [string]$downloadedManifest.version } else { '(not declared)' }
             Move-Item -LiteralPath $temp -Destination $target -Force
-            Write-Host "Manifest synchronized: $manifestId -> manifests/$manifestFile"
+            Write-Host "Manifest synchronized: $manifestId version $downloadedVersion -> manifests/$manifestFile" -ForegroundColor Magenta
         }
         catch {
             if (Test-Path -LiteralPath $temp) {
                 Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue
             }
-            if (Test-ManifestFile -Path $target -ExpectedId $manifestId) {
-                $HadWarning = $true
-                Write-Host "WARNING: Could not refresh manifest '$manifestId'; using cached manifests/$manifestFile. $($_.Exception.Message)" -ForegroundColor Yellow
-            }
-            else {
-                throw
-            }
+            throw "Could not refresh authoritative manifest '$manifestId'. Local cache was not accepted as a successful sync. $($_.Exception.Message)"
         }
     }
 
@@ -82,12 +83,7 @@ try {
         }
     }
 
-    if ($HadWarning) {
-        Write-Host 'STATUS: WARNING - manifest synchronization completed using at least one cached manifest.' -ForegroundColor Yellow
-    }
-    else {
-        Write-Host 'STATUS: SUCCESS - manifests synchronized and verified.' -ForegroundColor Green
-    }
+    Write-Host 'STATUS: SUCCESS - fresh authoritative manifests synchronized and verified.' -ForegroundColor Green
     exit 0
 }
 catch {

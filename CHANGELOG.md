@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.12.24 (devel)
+- Manifest synchronization now always requests a fresh authoritative copy with explicit no-cache headers and a cache-busting query parameter; a failed refresh is an error instead of silently accepting an older local cache.
+- Successful manifest refreshes report the downloaded manifest version, and manifest synchronization output is highlighted in magenta during upgrade runs.
+- Bumped updater revision to 15 and SUM runtime/package/Companion versions to 0.12.24. No VPP protocol or application-manifest contract change is part of this release.
+
+
 ## 0.12.23 (devel)
 - Implemented the manifest-driven `dynamicCollections` runtime: authoritative arrays from matching event `args` are converted into current snapshots and exposed to action dropdowns through `choicesFrom`; changed snapshots refresh Companion action definitions without application-specific code.
 - Added manifest event diagnostics for matched/unknown events, mapped variables, collection item counts, generated choice counts, and concrete collection/schema failures.
