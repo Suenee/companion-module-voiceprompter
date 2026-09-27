@@ -1,13 +1,13 @@
-# VoicePrompter module for Bitfocus Companion
+# Socket Universe Module for Bitfocus Companion
 
-`companion-module-voiceprompter` connects Bitfocus Companion to VoicePrompter through VoicePrompter Bridge (VPBridge).
+`companion-module-voiceprompter` connects Bitfocus Companion to applications through Socket Universe Bridge (SUB). VoicePrompter is one of the supported application manifests.
 
 The module uses the VoicePrompter Protocol (VPP) JSON envelope for bidirectional communication.
 
 ## Features
 
-- Bidirectional WebSocket communication through VPBridge
-- Configurable VPBridge IP address and port
+- Bidirectional WebSocket communication through SUB
+- Configurable SUB IP address, port and Socket Box
 - Optional API key
 - Navigation actions for VoicePrompter
 - Marker-based navigation
@@ -24,13 +24,19 @@ IP address: 127.0.0.1
 Port:       8170
 ```
 
-The module connects to:
+The module connects to the configured Socket Box:
 
 ```text
-ws://<IP>:<PORT>/bc
+ws://<IP>:<PORT>/mailbox/<Socket Box>
 ```
 
-When VPBridge is configured for All Interfaces, configure the same API key in the module.
+Select an application manifest and enter its assigned Socket Box. When SUB requires an API key, configure the same key in the module.
+
+## Companion module package
+
+Run `npm run check` and `npm run package` to validate and build an importable Companion `.tgz` package. The build includes the synchronized application manifest cache under `manifests/`, which the runtime reads at startup. Test the packaged connection, including manifest selection and at least one action, before submitting a release.
+
+The current development module ID is `voiceprompter`; coordinate the official repository name and any ID migration with Bitfocus before the first catalog release.
 
 ## Installation / development
 

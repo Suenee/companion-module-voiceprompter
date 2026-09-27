@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.12.25 (devel)
+- Added Companion's in-app help and the MIT license file for official module distribution.
+- Include synchronized application manifest caches in packaged builds, preserving the `manifests/` directory used at runtime.
+- Added a module check script and ignored generated package artifacts. No VPP protocol or application-manifest contract change is part of this release.
+
 ## 0.12.24 (devel)
 - Manifest synchronization now always requests a fresh authoritative copy with explicit no-cache headers and a cache-busting query parameter; a failed refresh is an error instead of silently accepting an older local cache.
 - Successful manifest refreshes report the downloaded manifest version, and manifest synchronization output is highlighted in magenta during upgrade runs.
